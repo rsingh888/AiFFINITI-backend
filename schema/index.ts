@@ -1,0 +1,14 @@
+import { userInfo } from './user-info';
+import { user } from './user';
+import { userLocation } from './user-location';
+import { userInterests, userInterestMapping } from './user-intrest-mapping';
+import { userMedia } from './user-media';
+
+export const schema = {
+  user,
+  userInfo,
+  userInterests,
+  userInterestMapping,
+  userMedia,
+  userLocation,
+};

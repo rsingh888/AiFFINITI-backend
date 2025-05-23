@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { AffinitiApiGatewayModule } from './affiniti-api-gateway.module';
+import { ApiGatewayModule } from './api-gateway.module';
 import * as cookieParser from 'cookie-parser';
 
 // import { Transport } from '@nestjs/microservices';
@@ -10,7 +10,7 @@ const allowedOrigin = [
   'https://aiffiniti-frontend-testing.vercel.app',
 ];
 async function bootstrap() {
-  const app = await NestFactory.create(AffinitiApiGatewayModule);
+  const app = await NestFactory.create(ApiGatewayModule);
   app.enableCors({
     origin: allowedOrigin,
     credentials: true,

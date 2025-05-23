@@ -3,7 +3,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
-export class AffinitiApiGatewayService {
+export class AuthApiGatewayService {
   constructor(@Inject('AUTH_SERVICE') private authService: ClientProxy) {}
   getHello(): string {
     return 'Hello World!';
@@ -226,6 +226,7 @@ export class AffinitiApiGatewayService {
 
     return status;
   }
+
   async postUpdateVideo(accessToken: string, data: { Video: string }) {
     const accessTokenValue = accessToken;
 

@@ -1,30 +1,46 @@
-import { Controller, Get, Post, Body, Headers } from '@nestjs/common';
-import { AffinitiApiGatewayService } from './affiniti-api-gateway.service';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Headers,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthApiGatewayService } from './auth-api-gateway.service';
+import { PhoneLoginDto } from './dto/phone-login.dto';
+import { UpdateIntroDto } from './dto/update-intro.dto';
+import { UpdateInterestDto } from './dto/update-interests.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
+import { UpdateGenderDto } from './dto/update-gender.dto';
+import { UpdateDistanceDto } from './dto/update-distance.dto';
+import { UpdatePhotosDto } from './dto/update-photos.dto';
+import { UpdateVideoDto } from './dto/update-video.dto';
+import { AuthGuard } from '../common/guard/auth.guard';
 
 @Controller()
-export class AffinitiApiGatewayController {
-  constructor(
-    private readonly affinitiApiGatewayService: AffinitiApiGatewayService,
-  ) {}
+export class AuthApiGatewayController {
+  constructor(private readonly AuthApiGatewayService: AuthApiGatewayService) {}
 
   @Get('hello')
   getHello() {
-    return this.affinitiApiGatewayService.getHello();
+    return this.AuthApiGatewayService.getHello();
   }
 
   @Get('auth-hello')
   getAuthHello() {
-    return this.affinitiApiGatewayService.getAuthHello();
+    return this.AuthApiGatewayService.getAuthHello();
   }
+
+  // user ko new access token ke liye
 
   @Post('refresh-token')
   async refreshToken(@Body() body: { refreshToken: string }) {
-    return this.affinitiApiGatewayService.refreshAccessToken(body.refreshToken);
+    return this.AuthApiGatewayService.refreshAccessToken(body.refreshToken);
   }
 
   @Post('phone-login')
-  async postPhoneLogin(@Body() body: { phone: string; otp?: string }) {
-    return this.affinitiApiGatewayService.postPhoneLogin(body);
+  async postPhoneLogin(@Body() body: PhoneLoginDto) {
+    return this.AuthApiGatewayService.postPhoneLogin(body);
   }
 
   @Post('social-login')
@@ -35,13 +51,14 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postSocialLogin(token);
+    return this.AuthApiGatewayService.postSocialLogin(token);
   }
 
+  @UseGuards(AuthGuard)
   @Post('user-intro')
   async postUserIntro(
     @Headers('authorization') authHeader: string,
-    @Body() body: { nickName: string; dateOfBirth: Date },
+    @Body() body: UpdateIntroDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -49,13 +66,14 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postUpdateIntro(token, body);
+    return this.AuthApiGatewayService.postUpdateIntro(token, body);
   }
 
+  @UseGuards(AuthGuard)
   @Post('user-interest')
   async postUserInterest(
     @Headers('authorization') authHeader: string,
-    @Body() body: { interests: string[] },
+    @Body() body: UpdateInterestDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -63,19 +81,15 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postUpdateInterest(token, body);
+    return this.AuthApiGatewayService.postUpdateInterest(token, body);
   }
 
+  @UseGuards(AuthGuard)
   @Post('user-location')
   async postUserLocation(
     @Headers('authorization') authHeader: string,
     @Body()
-    body: {
-      location: {
-        latitude: number;
-        longitude: number;
-      };
-    },
+    body: UpdateLocationDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -83,13 +97,14 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token missing or malformed');
     }
 
-    return this.affinitiApiGatewayService.postUpdateLocation(token, body);
+    return this.AuthApiGatewayService.postUpdateLocation(token, body);
   }
 
+  @UseGuards(AuthGuard)
   @Post('user-gender')
   async postUserGender(
     @Headers('authorization') authHeader: string,
-    @Body() body: { gender: string },
+    @Body() body: UpdateGenderDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -97,13 +112,14 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postUpdateGender(token, body);
+    return this.AuthApiGatewayService.postUpdateGender(token, body);
   }
 
+  @UseGuards(AuthGuard)
   @Post('user-distance-preferred')
   async postUserDiatancePreferred(
     @Headers('authorization') authHeader: string,
-    @Body() body: { distancePreferred: number },
+    @Body() body: UpdateDistanceDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -111,16 +127,14 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postUpdateDistancePreferred(
-      token,
-      body,
-    );
+    return this.AuthApiGatewayService.postUpdateDistancePreferred(token, body);
   }
 
+  @UseGuards(AuthGuard)
   @Post('user-photos')
   async postUserPhotos(
     @Headers('authorization') authHeader: string,
-    @Body() body: { photos: string[] },
+    @Body() body: UpdatePhotosDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -128,12 +142,13 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postUpdatePhotos(token, body);
+    return this.AuthApiGatewayService.postUpdatePhotos(token, body);
   }
+  @UseGuards(AuthGuard)
   @Post('user-video')
   async postUserVideo(
     @Headers('authorization') authHeader: string,
-    @Body() body: { Video: string },
+    @Body() body: UpdateVideoDto,
   ) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
 
@@ -141,13 +156,14 @@ export class AffinitiApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.affinitiApiGatewayService.postUpdateVideo(token, body);
+    return this.AuthApiGatewayService.postUpdateVideo(token, body);
   }
 
   // -----------------GET REQUEST ----------------------
+  @UseGuards(AuthGuard)
   @Get('user-details')
   getUserDetails(@Headers('authorization') authHeader: string) {
     const token = authHeader?.replace(/^Bearer\s+/i, '');
-    return this.affinitiApiGatewayService.getUserDetails(token);
+    return this.AuthApiGatewayService.getUserDetails(token);
   }
 }

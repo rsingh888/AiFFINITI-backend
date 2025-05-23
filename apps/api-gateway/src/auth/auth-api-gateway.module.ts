@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { AffinitiApiGatewayController } from './affiniti-api-gateway.controller';
-import { AffinitiApiGatewayService } from './affiniti-api-gateway.service';
+import { AuthApiGatewayController } from './auth-api-gateway.controller';
+import { AuthApiGatewayService } from './auth-api-gateway.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { AuthGuard } from '../common/guard/auth.guard';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
       },
     ]), // Add other microservices here
   ],
-  controllers: [AffinitiApiGatewayController],
-  providers: [AffinitiApiGatewayService],
+  controllers: [AuthApiGatewayController],
+  providers: [AuthApiGatewayService, AuthGuard],
 })
-export class AffinitiApiGatewayModule {}
+export class AuthApiGatewayModule {}

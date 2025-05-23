@@ -16,7 +16,7 @@ export const loginFormCheckPointEnum = pgEnum('login-form-checkpoint', [
   'INTREST_DONE',
   'LOCATION_DONE',
   'GENDER_DONE',
-  'DISTANC_EPREFFERD_DONE',
+  'DISTANCE_PREFERRED_DONE',
   'PHOTOS_DONE',
   'VIDEO_DONE',
 ]);

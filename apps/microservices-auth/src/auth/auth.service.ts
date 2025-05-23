@@ -20,6 +20,8 @@ export class AuthService {
     return 'Hello';
   }
 
+  // User ko new access token dene ke liye
+
   async refreshSupabaseSession(refreshToken: string) {
     const client = createClient(
       this.configService.get<string>('SUPABASE_URL') || '',
@@ -38,6 +40,15 @@ export class AuthService {
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
     };
+  }
+
+  async verifyToken(accessToken: string) {
+    console.log('accessToken in verifytoken function: ', accessToken);
+    const { data, error } = await this.supabase.auth.getUser(accessToken);
+    if (error || !data?.user) {
+      throw new Error('Invalid or expired token');
+    }
+    return data.user;
   }
 
   // Private user id token
@@ -553,7 +564,7 @@ export class AuthService {
         .update(schema.userInfo)
         .set({
           distancePreferred: distancePreferred,
-          loginFormCheckPoint: 'DISTANC_EPREFFERD_DONE',
+          loginFormCheckPoint: 'DISTANCE_PREFERRED_DONE',
         })
         .where(eq(schema.userInfo.userId, userId));
 

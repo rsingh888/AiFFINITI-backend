@@ -12,7 +12,7 @@ import { AuthGuard } from '../common/guard/auth.guard';
         transport: Transport.TCP,
         options: {
           // host: 'https://affinity-backend-testing-1.onrender.com',
-          host: 'localhost',
+          // host: 'localhost',
           port: 3001,
         },
       },

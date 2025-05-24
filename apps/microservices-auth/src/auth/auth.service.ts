@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
 import { inArray } from 'drizzle-orm';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 
@@ -14,6 +14,8 @@ export class AuthService {
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
+
+  // Testing purpose
 
   async authHello() {
     await new Promise((res) => setTimeout(res, 5000));
@@ -39,11 +41,14 @@ export class AuthService {
     return {
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
+      expiresIn: data.session.expires_in,
+      user: data.session.user,
     };
   }
 
+  // Guard ke liye
+
   async verifyToken(accessToken: string) {
-    console.log('accessToken in verifytoken function: ', accessToken);
     const { data, error } = await this.supabase.auth.getUser(accessToken);
     if (error || !data?.user) {
       throw new Error('Invalid or expired token');
@@ -57,7 +62,7 @@ export class AuthService {
     const { data: session, error } = await this.supabase.auth.getUser(token);
     if (error || !session?.user) throw new Error('Invalid token');
 
-    const user = session.user;
+    const user: User = session.user;
     const email = user.email;
     const phone = user.phone;
 
@@ -124,6 +129,7 @@ export class AuthService {
             phone: validUser.phone,
             email: validUser.email ?? '',
             isEmailVerified: !!validUser.email, // true if email exists
+            loginFormCheckPoint: 'PHONE_DONE',
             authProvider: 'phone',
           })
           .returning();
@@ -132,10 +138,8 @@ export class AuthService {
 
         await this.db.insert(schema.userInfo).values({
           userId,
-          loginFormCheckPoint: 'PHONE_DONE',
         });
         isNewUser = true;
-        console.log('new user created in db');
 
         return {
           success: true,
@@ -145,22 +149,13 @@ export class AuthService {
       }
 
       if (!isNewUser) {
-        userId = existingUser[0].id;
-        const userInfoDetails = await this.db
-          .select()
-          .from(schema.userInfo)
-          .where(eq(schema.userInfo.userId, userId));
         return {
           success: true,
           message: 'User already exists',
           session,
-          checkPoint: userInfoDetails[0]?.loginFormCheckPoint,
+          checkPoint: existingUser[0]?.loginFormCheckPoint,
         };
-
-        console.log('user already exist');
       }
-
-      console.log('-------------Done------');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(`Phone sign-in failed: ${msg}`);
@@ -171,6 +166,9 @@ export class AuthService {
 
   async socialLogin(accessToken: string) {
     try {
+      if (!accessToken) {
+        throw new Error('Access token is missing');
+      }
       const { data: session, error } =
         await this.supabase.auth.getUser(accessToken);
 
@@ -231,38 +229,10 @@ export class AuthService {
     },
   ) {
     try {
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-      if (error || !session?.user) {
-        throw new Error('Failed to get user from Supabase');
-      }
-
-      const validUser = session.user;
-      const userEmail = validUser.email;
-      const userPhone = validUser.phone;
-
-      if (!userEmail && !userPhone) {
-        throw new Error('User must have either email or phone');
-      }
-
+      const userId = await this.getUserIdFromToken(accessToken);
       const { nickName, dateOfBirth } = data;
 
       const parsedDateOfBirth = new Date(dateOfBirth);
-
-      const existingUser = await this.db
-        .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
-
-      if (existingUser.length === 0) {
-        throw new Error('User not found in database');
-      }
-
-      const userId: number = existingUser[0].id;
 
       const existingUserInfo = await this.db
         .select()
@@ -274,8 +244,11 @@ export class AuthService {
           userId,
           nickName,
           dateOfBirth: parsedDateOfBirth,
-          loginFormCheckPoint: 'INTRO_DONE',
         });
+        await this.db
+          .update(schema.user)
+          .set({ loginFormCheckPoint: 'INTRO_DONE' })
+          .where(eq(schema.user.id, userId));
       } else {
         await this.db
           .update(schema.userInfo)
@@ -296,33 +269,10 @@ export class AuthService {
   // Interests Updation
 
   async updateInterest(accessToken: string, data: { interests: string[] }) {
-    const { data: session, error } =
-      await this.supabase.auth.getUser(accessToken);
-    if (error || !session?.user) {
-      throw new Error('Failed to get user from Supabase');
-    }
-
-    const user = session.user;
-    const userEmail = user.email;
-    const userPhone = user.phone;
+    const userId = await this.getUserIdFromToken(accessToken);
     const { interests } = data;
 
     return await this.db.transaction(async (trx) => {
-      const existingUser = await trx
-        .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
-
-      if (existingUser.length === 0) {
-        throw new Error('User not found');
-      }
-
-      const userId = existingUser[0].id;
-
       const userMapped = await trx
         .select({
           name: schema.userInterests.name,
@@ -376,11 +326,11 @@ export class AuthService {
 
       if (isFirstTime) {
         await trx
-          .update(schema.userInfo)
+          .update(schema.user)
           .set({
             loginFormCheckPoint: 'INTREST_DONE',
           })
-          .where(eq(schema.userInfo.userId, userId));
+          .where(eq(schema.user.id, userId));
       }
 
       return {
@@ -395,46 +345,12 @@ export class AuthService {
 
   async updateLocation(
     accessToken: string,
-    data: {
-      location: {
-        latitude: number;
-        longitude: number;
-      };
-    },
+    data: { location: { latitude: number; longitude: number } },
   ) {
     try {
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-      if (error || !session?.user) {
-        throw new Error('Failed to get user from Supabase');
-      }
-
-      const validUser = session.user;
-      const userEmail = validUser.email;
-      const userPhone = validUser.phone;
-
-      if (!userEmail && !userPhone) {
-        throw new Error('User must have either email or phone');
-      }
-
+      const userId = await this.getUserIdFromToken(accessToken);
       const { location } = data;
 
-      const existingUser = await this.db
-        .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
-
-      if (existingUser.length === 0) {
-        throw new Error('User not found');
-      }
-
-      const userId = existingUser[0].id;
-
-      // Insert or update userLocation
       const existingLocation = await this.db
         .select()
         .from(schema.userLocation)
@@ -446,6 +362,11 @@ export class AuthService {
           longitude: location.longitude,
           latitude: location.latitude,
         });
+
+        await this.db
+          .update(schema.user)
+          .set({ loginFormCheckPoint: 'LOCATION_DONE' })
+          .where(eq(schema.user.id, userId));
       } else {
         await this.db
           .update(schema.userLocation)
@@ -455,14 +376,6 @@ export class AuthService {
           })
           .where(eq(schema.userLocation.userId, userId));
       }
-
-      // Update checkpoint ONLY for this user
-      await this.db
-        .update(schema.userInfo)
-        .set({
-          loginFormCheckPoint: 'LOCATION_DONE',
-        })
-        .where(eq(schema.userInfo.userId, userId));
 
       return { success: true, message: 'Location updated successfully' };
     } catch (err) {
@@ -475,15 +388,7 @@ export class AuthService {
 
   async updateGender(accessToken: string, data: { gender: string }) {
     try {
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-      if (error || !session?.user) {
-        throw new Error('Failed to get user from Supabase');
-      }
-
-      const validUser = session.user;
-      const userEmail = validUser.email;
-      const userPhone = validUser.phone;
+      const userId = await this.getUserIdFromToken(accessToken);
       const { gender } = data;
 
       const validGenders: ('Male' | 'Female')[] = ['Male', 'Female'];
@@ -491,28 +396,28 @@ export class AuthService {
         throw new Error('Invalid gender. Must be "Male" or "Female"');
       }
 
-      const existingUser = await this.db
+      const existingUserInfo = await this.db
         .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
+        .from(schema.userInfo)
+        .where(eq(schema.userInfo.userId, userId));
 
-      if (existingUser.length === 0) {
-        throw new Error('User not found');
+      if (existingUserInfo.length === 0) {
+        throw new Error('User info not found');
       }
 
-      const userId = existingUser[0].id;
+      const isFirstTime = !existingUserInfo[0].gender; // true if gender is empty or null
 
       await this.db
         .update(schema.userInfo)
         .set({
           gender: gender as 'Male' | 'Female',
-          loginFormCheckPoint: 'GENDER_DONE',
         })
         .where(eq(schema.userInfo.userId, userId));
+
+      await this.db
+        .update(schema.user)
+        .set({ ...(isFirstTime && { loginFormCheckPoint: 'GENDER_DONE' }) })
+        .where(eq(schema.user.id, userId));
 
       return { success: true, message: 'Gender updated successfully' };
     } catch (err) {
@@ -523,50 +428,44 @@ export class AuthService {
 
   // Distance Updation
 
-  async updateDistance(
+  async updateDistancePreferred(
     accessToken: string,
-    data: {
-      distancePreferred: number;
-    },
+    data: { distancePreferredInKm: number },
   ) {
     try {
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-      if (error || !session?.user) {
-        throw new Error('Failed to get user from Supabase');
+      const userId = await this.getUserIdFromToken(accessToken);
+      const { distancePreferredInKm } = data;
+
+      if (
+        distancePreferredInKm === undefined ||
+        distancePreferredInKm === null
+      ) {
+        throw new Error('distancePreferredInKm must be provided');
       }
 
-      const validUser = session.user;
-      const userEmail = validUser.email;
-      const userPhone = validUser.phone;
-      const { distancePreferred } = data;
-
-      if (distancePreferred < 0) {
+      if (distancePreferredInKm < 0) {
         throw new Error('Distance cannot be negative');
       }
 
-      const existingUser = await this.db
+      const existingUserInfo = await this.db
         .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
+        .from(schema.userInfo)
+        .where(eq(schema.userInfo.userId, userId))
+        .limit(1);
 
-      if (existingUser.length === 0) {
-        throw new Error('User not found');
+      if (existingUserInfo.length === 0) {
+        throw new Error('User info not found');
       }
-
-      const userId = existingUser[0].id;
 
       await this.db
         .update(schema.userInfo)
-        .set({
-          distancePreferred: distancePreferred,
-          loginFormCheckPoint: 'DISTANCE_PREFERRED_DONE',
-        })
+        .set({ distancePreferredInKm })
         .where(eq(schema.userInfo.userId, userId));
+
+      await this.db
+        .update(schema.user)
+        .set({ loginFormCheckPoint: 'DISTANCE_PREFERRED_DONE' })
+        .where(eq(schema.user.id, userId));
 
       return { success: true, message: 'Distance updated successfully' };
     } catch (err) {
@@ -586,30 +485,7 @@ export class AuthService {
     try {
       const { photos } = data;
 
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-      if (error || !session?.user) {
-        throw new Error('Failed to get user from Supabase');
-      }
-
-      const validUser = session.user;
-      const userEmail = validUser.email;
-      const userPhone = validUser.phone;
-
-      const existingUser = await this.db
-        .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
-
-      if (existingUser.length === 0) {
-        throw new Error('User not found');
-      }
-
-      const userId = existingUser[0].id;
+      const userId = await this.getUserIdFromToken(accessToken);
 
       const existingMedia = await this.db
         .select()
@@ -622,14 +498,17 @@ export class AuthService {
           photos: photos ?? [],
         });
 
-        await this.db.update(schema.userInfo).set({
-          loginFormCheckPoint: 'PHOTOS_DONE',
-        });
+        await this.db
+          .update(schema.user)
+          .set({
+            loginFormCheckPoint: 'PHOTOS_DONE',
+          })
+          .where(eq(schema.user.id, userId));
       } else {
         const currentMedia = existingMedia[0];
 
         const updatedPhotos = photos
-          ? [...new Set([...currentMedia.photos, ...photos])] // Removing duplicates
+          ? [...new Set([...(currentMedia.photos ?? []), ...photos])] // Removing duplicates
           : currentMedia.photos;
 
         await this.db
@@ -652,62 +531,38 @@ export class AuthService {
   async updateVideo(
     accessToken: string,
     data: {
-      Video?: string;
+      videoUrl?: string;
     },
   ) {
     try {
-      const { Video } = data;
+      const { videoUrl } = data;
 
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-      if (error || !session?.user) {
-        throw new Error('Failed to get user from Supabase');
-      }
-
-      const validUser = session.user;
-      const userEmail = validUser.email;
-      const userPhone = validUser.phone;
-
-      const existingUser = await this.db
-        .select()
-        .from(schema.user)
-        .where(
-          userEmail
-            ? eq(schema.user.email, userEmail)
-            : eq(schema.user.phone, userPhone ?? ''),
-        );
-
-      if (existingUser.length === 0) {
-        throw new Error('User not found');
-      }
-
-      const userId = existingUser[0].id;
+      const userId = await this.getUserIdFromToken(accessToken);
 
       const existingMedia = await this.db
         .select()
         .from(schema.userMedia)
         .where(eq(schema.userMedia.userId, userId));
 
-      if (existingMedia.length === 0) {
-        await this.db.insert(schema.userMedia).values({
-          userId,
-          photos: [],
-          videos: Video ? [Video] : [],
-        });
-      } else {
-        const currentMedia = existingMedia[0];
+      const currentMedia = existingMedia[0];
 
-        const updatedVideos = Video
-          ? [...new Set([...(currentMedia.videos ?? []), Video])] // Removing duplicates
-          : currentMedia.videos;
+      const updatedVideos = videoUrl
+        ? [...new Set([...(currentMedia.videos ?? []), videoUrl])] // Removing duplicates
+        : currentMedia.videos;
 
-        await this.db
-          .update(schema.userMedia)
-          .set({
-            videos: updatedVideos,
-          })
-          .where(eq(schema.userMedia.userId, userId));
-      }
+      await this.db
+        .update(schema.userMedia)
+        .set({
+          videos: updatedVideos,
+        })
+        .where(eq(schema.userMedia.userId, userId));
+
+      await this.db
+        .update(schema.user)
+        .set({
+          loginFormCheckPoint: 'VIDEO_DONE',
+        })
+        .where(eq(schema.user.id, userId));
 
       return { message: 'Media updated successfully' };
     } catch (err) {
@@ -746,6 +601,7 @@ export class AuthService {
       location,
       genderRow,
       distanceRow,
+      loginFormCheckPoint,
       photosRow,
       videosRow,
       interestsRaw,
@@ -769,9 +625,16 @@ export class AuthService {
         .where(eq(schema.userInfo.userId, userId)),
 
       this.db
-        .select({ distancePreferred: schema.userInfo.distancePreferred })
+        .select({
+          distancePreferredInKm: schema.userInfo.distancePreferredInKm,
+        })
         .from(schema.userInfo)
         .where(eq(schema.userInfo.userId, userId)),
+
+      this.db
+        .select({ loginFormCheckPoint: schema.user.loginFormCheckPoint })
+        .from(schema.user)
+        .where(eq(schema.user.id, userId)),
 
       this.db
         .select({ photos: schema.userMedia.photos })
@@ -799,7 +662,8 @@ export class AuthService {
       intro: intro[0] ?? null,
       location: location[0] ?? null,
       gender: genderRow[0]?.gender ?? null,
-      distancePreferred: distanceRow[0]?.distancePreferred ?? null,
+      distancePreferredInKm: distanceRow[0]?.distancePreferredInKm ?? null,
+      loginFormCheckPoint: loginFormCheckPoint[0]?.loginFormCheckPoint ?? null,
       photos: photosRow[0]?.photos ?? [],
       videos: videosRow[0]?.videos ?? [],
       interests: interestsRaw.map((i) => i.name),

@@ -19,6 +19,15 @@
         "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
       }
     },
+    "microservices-misc": {
+      "type": "application",
+      "root": "apps/microservices-misc",
+      "entryFile": "main",
+      "sourceRoot": "apps/microservices-misc/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/microservices-misc/tsconfig.app.json"
+      }
+    },
     "microservices-auth": {
       "type": "application",
       "root": "apps/microservices-auth",

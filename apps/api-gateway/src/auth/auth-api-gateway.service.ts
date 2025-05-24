@@ -19,13 +19,12 @@ export class AuthApiGatewayService {
   }
 
   async refreshAccessToken(refreshToken: string) {
-    const result: { accessToken: string; refreshToken: string } =
-      await firstValueFrom(
-        this.authService.send<{ accessToken: string; refreshToken: string }>(
-          { cmd: 'refresh-token' },
-          refreshToken,
-        ),
-      );
+    const result = await firstValueFrom(
+      this.authService.send<{ accessToken: string; refreshToken: string }>(
+        { cmd: 'refresh-token' },
+        refreshToken,
+      ),
+    );
 
     return result; // { accessToken, refreshToken }
   }
@@ -41,7 +40,7 @@ export class AuthApiGatewayService {
       const status: string = await firstValueFrom(
         this.authService.send<string>({ cmd: 'auth-send-otp' }, { phone }),
       );
-      console.log('otp send');
+
       return status;
     } else {
       const status: string = await firstValueFrom(
@@ -51,7 +50,6 @@ export class AuthApiGatewayService {
         ),
       );
 
-      console.log('verified');
       return status;
     }
   }
@@ -62,6 +60,8 @@ export class AuthApiGatewayService {
     if (!accessTokenValue) {
       throw new Error('Access token needed');
     }
+
+    console.log('access token value ', accessTokenValue);
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
@@ -177,11 +177,11 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdateDistancePreferred(
+  async postUpdateDistancePreferredInKm(
     accessToken: string,
-    data: { distancePreferred: number },
+    data: { distancePreferredInKm: number },
   ) {
-    const { distancePreferred } = data;
+    const { distancePreferredInKm } = data;
     const accessTokenValue = accessToken;
 
     if (!accessTokenValue) {
@@ -194,7 +194,7 @@ export class AuthApiGatewayService {
         {
           token: accessTokenValue,
           data: {
-            distancePreferred,
+            distancePreferredInKm,
           },
         },
       ),
@@ -227,14 +227,14 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdateVideo(accessToken: string, data: { Video: string }) {
+  async postUpdateVideo(accessToken: string, data: { videoUrl: string }) {
     const accessTokenValue = accessToken;
 
     if (!accessTokenValue) {
       throw new Error('Access denied');
     }
 
-    const { Video } = data;
+    const { videoUrl } = data;
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
@@ -242,7 +242,7 @@ export class AuthApiGatewayService {
         {
           token: accessTokenValue,
           data: {
-            Video,
+            videoUrl,
           },
         },
       ),
@@ -256,12 +256,12 @@ export class AuthApiGatewayService {
   async getUserDetails(token: string): Promise<{
     phone?: string;
     email?: string;
-    nickname: string;
+    nickName: string;
     dateOfBirth: string;
     interests: string[];
     location: { latitude: number; longitude: number };
     gender: string;
-    distancePreferred: number;
+    distancePreferredInKm: number;
     photos: string[];
     videos: string[];
   }> {
@@ -269,12 +269,12 @@ export class AuthApiGatewayService {
       this.authService.send<{
         phone?: string;
         email?: string;
-        nickname: string;
+        nickName: string;
         dateOfBirth: string;
         interests: string[];
         location: { latitude: number; longitude: number };
         gender: string;
-        distancePreferred: number;
+        distancePreferredInKm: number;
         photos: string[];
         videos: string[];
       }>({ cmd: 'get-user-details' }, token),

@@ -41,7 +41,6 @@ export class AuthGuard implements CanActivate {
         phone?: string;
       }
 
-      console.log('Token sended to auth-verify-token microservice :', token);
       const user = await firstValueFrom<UserPayload>(
         this.authClient.send('auth-verify-token', token),
       );

@@ -1,6 +1,6 @@
 import { IsNumber } from 'class-validator';
 
-export class UpdateUserDistancePreferredDto {
+export class UpdateUserDistancePreferredInKmDto {
   @IsNumber()
-  distancePreferred: number;
+  distancePreferredInKm: number;
 }

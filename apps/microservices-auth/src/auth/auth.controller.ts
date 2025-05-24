@@ -3,12 +3,11 @@ import { AuthService } from './auth.service';
 import { MessagePattern } from '@nestjs/microservices';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { SocialLoginDto } from './dto/social-login.dto';
 import { UpdateUserIntroDto } from './dto/update-user-intro.dto';
 import { UpdateUserInterestDto } from './dto/update-user-interests.dto';
 import { UpdateLocationDto } from './dto/update-user-location.dto';
 import { UpdateUserGenderDto } from './dto/update-user-gender.dto';
-import { UpdateUserDistancePreferredDto } from './dto/update-user-distance-preferred.dto';
+import { UpdateUserDistancePreferredInKmDto } from './dto/update-user-distance-preferred.dto';
 import { UpdateUserPhotosDto } from './dto/update-user-photos.dto';
 import { UpdateUserVideoDto } from './dto/update-user-video.dto';
 
@@ -25,14 +24,13 @@ export class AuthController {
 
   @MessagePattern('auth-verify-token')
   async verifyToken(accessToken: string) {
-    console.log('Access Token in microservices: ', accessToken);
     return this.authService.verifyToken(accessToken);
   }
 
   // user ko new access token dene ke liye --> if expired
   @MessagePattern({ cmd: 'refresh-token' })
-  refreshToken(refreshToken: string) {
-    return this.authService.refreshSupabaseSession(refreshToken);
+  refreshToken(data: { refreshToken: string }) {
+    return this.authService.refreshSupabaseSession(data.refreshToken);
   }
 
   @MessagePattern({ cmd: 'auth-send-otp' })
@@ -46,8 +44,8 @@ export class AuthController {
   }
 
   @MessagePattern({ cmd: 'auth-social-login' })
-  async socialLogin(data: SocialLoginDto) {
-    return this.authService.socialLogin(data.accessToken);
+  async socialLogin(accessTokenValue: string) {
+    return this.authService.socialLogin(accessTokenValue);
   }
 
   @MessagePattern({ cmd: 'update-user-intro' })
@@ -83,11 +81,14 @@ export class AuthController {
   }
 
   @MessagePattern({ cmd: 'update-user-distance-preferred' })
-  async updateUserDistancePreferred(payload: {
+  async updateUserDistancePreferredInKm(payload: {
     token: string;
-    data: UpdateUserDistancePreferredDto;
+    data: UpdateUserDistancePreferredInKmDto;
   }) {
-    return this.authService.updateDistance(payload.token, payload.data);
+    return this.authService.updateDistancePreferred(
+      payload.token,
+      payload.data,
+    );
   }
 
   @MessagePattern({ cmd: 'update-user-photos' })

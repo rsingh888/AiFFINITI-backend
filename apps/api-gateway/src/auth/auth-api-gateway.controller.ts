@@ -16,6 +16,7 @@ import { UpdateDistanceDto } from './dto/update-distance.dto';
 import { UpdatePhotosDto } from './dto/update-photos.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
 import { AuthGuard } from '../common/guard/auth.guard';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 @Controller()
 export class AuthApiGatewayController {
@@ -34,7 +35,7 @@ export class AuthApiGatewayController {
   // user ko new access token ke liye
 
   @Post('refresh-token')
-  async refreshToken(@Body() body: { refreshToken: string }) {
+  async refreshToken(@Body() body: RefreshTokenDto) {
     return this.AuthApiGatewayService.refreshAccessToken(body.refreshToken);
   }
 
@@ -45,7 +46,7 @@ export class AuthApiGatewayController {
 
   @Post('social-login')
   async postSocialLogin(@Headers('authorization') authHeader: string) {
-    const token = authHeader?.split(' ')[1];
+    const token = authHeader?.replace(/^Bearer\s+/i, '');
 
     if (!token) {
       throw new Error('Access token not defined');
@@ -117,7 +118,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-distance-preferred')
-  async postUserDiatancePreferred(
+  async postUserDistancePreferred(
     @Headers('authorization') authHeader: string,
     @Body() body: UpdateDistanceDto,
   ) {
@@ -127,7 +128,10 @@ export class AuthApiGatewayController {
       throw new Error('Access token not defined');
     }
 
-    return this.AuthApiGatewayService.postUpdateDistancePreferred(token, body);
+    return this.AuthApiGatewayService.postUpdateDistancePreferredInKm(
+      token,
+      body,
+    );
   }
 
   @UseGuards(AuthGuard)

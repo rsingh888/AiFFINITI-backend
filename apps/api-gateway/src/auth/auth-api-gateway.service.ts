@@ -22,7 +22,7 @@ export class AuthApiGatewayService {
     const result = await firstValueFrom(
       this.authService.send<{ accessToken: string; refreshToken: string }>(
         { cmd: 'refresh-token' },
-        refreshToken,
+        { refreshToken },
       ),
     );
 

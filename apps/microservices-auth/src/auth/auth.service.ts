@@ -407,17 +407,22 @@ export class AuthService {
 
       const isFirstTime = !existingUserInfo[0].gender; // true if gender is empty or null
 
-      await this.db
-        .update(schema.userInfo)
-        .set({
-          gender: gender as 'Male' | 'Female',
-        })
-        .where(eq(schema.userInfo.userId, userId));
+      if (isFirstTime === true) {
+        await this.db
+          .update(schema.userInfo)
+          .set({ gender: gender as 'Male' | 'Female' })
+          .where(eq(schema.userInfo.userId, userId));
 
-      await this.db
-        .update(schema.user)
-        .set({ ...(isFirstTime && { loginFormCheckPoint: 'GENDER_DONE' }) })
-        .where(eq(schema.user.id, userId));
+        await this.db
+          .update(schema.user)
+          .set({ loginFormCheckPoint: 'GENDER_DONE' })
+          .where(eq(schema.user.id, userId));
+      } else {
+        await this.db
+          .update(schema.userInfo)
+          .set({ gender: gender as 'Male' | 'Female' })
+          .where(eq(schema.userInfo.userId, userId));
+      }
 
       return { success: true, message: 'Gender updated successfully' };
     } catch (err) {

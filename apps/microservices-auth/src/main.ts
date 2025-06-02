@@ -14,5 +14,6 @@ async function bootstrap() {
   );
 
   await app.listen();
+  console.log('Microservice Auth is running on port 3001');
 }
 bootstrap();

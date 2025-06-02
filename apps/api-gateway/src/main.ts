@@ -4,7 +4,7 @@ import * as cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
 
 const allowedOrigin = [
-  'http://localhost:5173',
+  'http://localhost:4000',
   'https://aiffiniti-frontend-testing.vercel.app',
 ];
 
@@ -28,5 +28,7 @@ async function bootstrap() {
   );
 
   await app.listen(3000);
+  console.log('API Gateway is running on port 3000');
 }
+
 bootstrap();

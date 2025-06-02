@@ -1,0 +1,31 @@
+firstly: npm install -g @nestjs/cli
+
+to create a new micro-service (here microservice-chat): 
+    1. nest generate app microservice-chat
+    2. clean up these files : (app.controller.ts app.controller.spec.ts app.service.ts)
+    3. create a chat module: nest g module chat --project microservice-chat
+    4. change port in main.ts
+    5. cleanup microservice-chat.module.ts for removed files
+    6. create a websocket gateway in chat module: nest g gateway chat --project microservice-chat 
+        (note that term "gateway" refers websocket gateway only, for api gateway use the term "nest g app api-gateway" types..)
+    7. install required dependencies: npm install @nestjs/websockets @nestjs/platform-socket.io socket.io
+    8. implemented basic code in gateway file
+
+steps while adding redis to the current system:
+    1. npm i redis ioredis
+    2. redis.module.ts
+    3. npm install @socket.io/redis-adapter
+
+(!! ~~ nest g controller chat --project api-gateway --flat --no-spec)
+
+(
+----------- always import config module when importing drizzle module -----------------
+    ConfigModule.forRoot({
+      envFilePath: '.env',
+      isGlobal: true,
+    }),
+    DrizzleModule,
+)
+
+
+

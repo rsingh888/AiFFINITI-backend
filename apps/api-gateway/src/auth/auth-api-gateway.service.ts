@@ -61,7 +61,7 @@ export class AuthApiGatewayService {
       throw new Error('Access token needed');
     }
 
-    console.log('access token value ', accessTokenValue);
+    // console.log('access token value ', accessTokenValue);
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(

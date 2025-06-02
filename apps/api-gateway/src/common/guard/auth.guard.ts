@@ -7,6 +7,7 @@ import {
 import { ClientProxy } from '@nestjs/microservices';
 import { Inject } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
+import { SupabaseUser } from '../types/userInterface';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -17,11 +18,7 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     interface RequestWithUser {
       headers: Record<string, string | undefined>;
-      user?: {
-        id?: string;
-        email?: string;
-        phone?: string;
-      };
+      user?: SupabaseUser;
     }
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
@@ -35,17 +32,11 @@ export class AuthGuard implements CanActivate {
     const token = authHeader.split(' ')[1];
 
     try {
-      interface UserPayload {
-        id?: string;
-        email?: string;
-        phone?: string;
-      }
-
-      const user = await firstValueFrom<UserPayload>(
+      const user = await firstValueFrom<SupabaseUser>(
         this.authClient.send('auth-verify-token', token),
       );
 
-      request.user = user;
+      request.user = { ...user, accessToken: token };
       return true;
     } catch {
       throw new UnauthorizedException('Invalid token');

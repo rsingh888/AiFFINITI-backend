@@ -47,13 +47,12 @@ export class AuthService {
   }
 
   // Guard ke liye
-
   async verifyToken(accessToken: string) {
     const { data, error } = await this.supabase.auth.getUser(accessToken);
     if (error || !data?.user) {
       throw new Error('Invalid or expired token');
     }
-    return data.user;
+    return { ...data.user };
   }
 
   // Private user id token

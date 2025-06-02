@@ -19,13 +19,13 @@
         "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
       }
     },
-    "microservices-misc": {
+    "microservice-chat": {
       "type": "application",
-      "root": "apps/microservices-misc",
+      "root": "apps/microservice-chat",
       "entryFile": "main",
-      "sourceRoot": "apps/microservices-misc/src",
+      "sourceRoot": "apps/microservice-chat/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/microservices-misc/tsconfig.app.json"
+        "tsConfigPath": "apps/microservice-chat/tsconfig.app.json"
       }
     },
     "microservices-auth": {
@@ -35,6 +35,15 @@
       "sourceRoot": "apps/microservices-auth/src",
       "compilerOptions": {
         "tsConfigPath": "apps/microservices-auth/tsconfig.app.json"
+      }
+    },
+    "microservices-misc": {
+      "type": "application",
+      "root": "apps/microservices-misc",
+      "entryFile": "main",
+      "sourceRoot": "apps/microservices-misc/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/microservices-misc/tsconfig.app.json"
       }
     }
   }

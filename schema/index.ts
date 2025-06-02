@@ -1,8 +1,9 @@
 import { userInfo } from './user-info';
 import { user } from './user';
 import { userLocation } from './user-location';
-import { userInterests, userInterestMapping } from './user-intrest-mapping';
+import { userInterests, userInterestMapping } from './user-interest-mapping';
 import { userMedia } from './user-media';
+import { chat, conversations } from './chatting_schemas';
 
 export const schema = {
   user,
@@ -11,4 +12,6 @@ export const schema = {
   userInterestMapping,
   userMedia,
   userLocation,
+  conversations,
+  chat,
 };

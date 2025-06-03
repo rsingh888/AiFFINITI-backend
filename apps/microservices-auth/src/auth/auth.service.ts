@@ -327,7 +327,7 @@ export class AuthService {
         await trx
           .update(schema.user)
           .set({
-            loginFormCheckPoint: 'INTREST_DONE',
+            loginFormCheckPoint: 'INTEREST_DONE',
           })
           .where(eq(schema.user.id, userId));
       }

@@ -18,14 +18,25 @@ steps while adding redis to the current system:
 
 (!! ~~ nest g controller chat --project api-gateway --flat --no-spec)
 
-(
 ----------- always import config module when importing drizzle module -----------------
     ConfigModule.forRoot({
       envFilePath: '.env',
       isGlobal: true,
     }),
     DrizzleModule,
-)
 
 
 
+---------------------------------------------------------------------------
+to deploy the apps on AWS EC2 instance:
+
+1. 
+    chmod 400 AiFFINITY.pem (required only ONCE per PC)
+    ssh -i "AiFFINITY.pem" ubuntu@13.203.227.53
+
+
+5. 
+    pm2 start dist/apps/api-gateway/main.js --name api-gateway
+    pm2 start dist/apps/microservices-auth/main.js --name microservices-auth
+    pm2 start dist/apps/microservices-misc/main.js --name microservices-misc
+    pm2 start dist/apps/microservice-chat/main.js --name microservice-chat

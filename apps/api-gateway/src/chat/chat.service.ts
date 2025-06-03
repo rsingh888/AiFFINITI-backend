@@ -6,10 +6,12 @@ import {
 } from '@nestjs/common';
 import { schema } from '../../../../schema/index';
 
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, and } from 'drizzle-orm';
 import { GetChatMessagesDto } from './dto/get-chat-messages.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { CreateConversationDto } from './dto/create-conversation.dto';
+import { ConversationType } from 'schema/chatting_schemas';
 
 @Injectable()
 export class ChatApiGatewayService {
@@ -97,5 +99,37 @@ export class ChatApiGatewayService {
       .limit(dto.limit);
 
     return { isSuccess: true, data: { messages } };
+  }
+
+  async createPersonalConversation(userId: string, dto: CreateConversationDto) {
+    // Ordering the IDs to ensure consistent matching
+    const sortedParticipants = [userId, dto.recipientId].sort();
+
+    const existing = await this.db
+      .select()
+      .from(schema.conversations)
+      .where(
+        and(
+          eq(schema.conversations.type, ConversationType.PERSONAL),
+          sql`${schema.conversations.participants} @> ${JSON.stringify(sortedParticipants)}::jsonb`,
+          sql`jsonb_array_length(${schema.conversations.participants}) = 2`,
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    // Create new conversation
+    const inserted = await this.db
+      .insert(schema.conversations)
+      .values({
+        type: ConversationType.PERSONAL,
+        participants: sortedParticipants,
+      })
+      .returning();
+
+    return inserted[0];
   }
 }

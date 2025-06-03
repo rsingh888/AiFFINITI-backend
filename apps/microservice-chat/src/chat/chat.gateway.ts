@@ -18,9 +18,9 @@ import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { schema } from '../../../../schema/index';
-import { ChatMessageType, ConversationType } from 'schema/chatting_schemas';
+import { ChatMessageType } from 'schema/chatting_schemas';
 
-import { and, eq, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { SupabaseUser } from 'apps/api-gateway/src/common/types/userInterface';
 
 const allowedOrigins = ['http://localhost:4000', '*'];
@@ -108,6 +108,7 @@ export class ChatGateway
       // logic here
     }
   */
+
   @SubscribeMessage('outgoing-p2p-message')
   async handlePrivateMessage(
     @MessageBody()
@@ -119,80 +120,56 @@ export class ChatGateway
       socketId=${client.id}
       senderId=${client.data.userId}
       to 
-      recipientId=${payload.recipientId}
+      recipientId=${payload.conversationId}
       type=${payload.type}
       p2pChatData=${JSON.stringify(payload.p2pChatData)},
-      p2pGameData=${JSON.stringify(payload.p2pGameData)}`,
+      p2pGameData=${JSON.stringify(payload.p2pGameRequest)}`,
     );
 
     const senderId = client.data.userId;
-    const recipientId = payload.recipientId;
+    const conversationId = payload.conversationId;
+    const conversationType = payload.type;
 
     // Step 1: Check for existing personal conversation
-    let [conversation] = await this.db
+    const [conversation] = await this.db
       .select()
       .from(schema.conversations)
-      .where(
-        and(
-          eq(schema.conversations.type, ConversationType.PERSONAL),
-          or(
-            eq(schema.conversations.participants, [senderId, recipientId]),
-            eq(schema.conversations.participants, [recipientId, senderId]),
-          ),
-        ),
-      );
+      .where(eq(schema.conversations.id, conversationId));
 
     if (!conversation) {
-      // TODO: change the flow (no conversation creation )
-      const inserted = await this.db
-        .insert(schema.conversations)
+      console.log("!!!--------!!! Conversation doesn't exist! ");
+      return;
+    }
+
+    if (conversationType === ChatMessageType.TEXT) {
+      const [newMessage] = await this.db
+        .insert(schema.chat)
         .values({
-          type: ConversationType.PERSONAL,
-          participants: [senderId, recipientId],
+          type: payload.type,
+          senderId: senderId,
+          messageData: {
+            message: payload.p2pChatData?.textMessageData?.message,
+          },
+          conversationId: conversation.id,
         })
         .returning();
-      conversation = inserted[0];
-    }
 
-    // Step 2: Insert new message
-    const [newMessage] = await this.db
-      .insert(schema.chat)
-      .values({
-        type: payload.type,
-        senderId: senderId,
-        messageData:
-          payload.type === ChatMessageType.TEXT
-            ? { message: payload.p2pChatData?.textMessageData?.message }
-            : payload.type === ChatMessageType.GAME_REQUEST
-              ? { gameData: payload.p2pGameData }
-              : {},
-        conversationId: conversation.id,
-      })
-      .returning();
+      await this.db
+        .update(schema.conversations)
+        .set({
+          lastMessageId: newMessage.id,
+        })
+        .where(eq(schema.conversations.id, conversation.id));
 
-    // Step 3: Update conversation metadata
-    // TODO: change the unread message count with proper logic
-    await this.db
-      .update(schema.conversations)
-      .set({
-        lastMessageId: newMessage.id,
-        // unreadMessagesCount: conversation.unreadMessagesCount + 1,
-      })
-      .where(eq(schema.conversations.id, conversation.id));
-
-    // Step 4: Emit message to recipient
-    const recipientSocketId = await this.redisClient.get(recipientId);
-    if (recipientSocketId) {
-      this.server.to(recipientSocketId).emit('incoming-p2p-message', {
-        message: newMessage,
-      });
-    }
-
-    const senderSocketId = await this.redisClient.get(senderId);
-    if (senderSocketId) {
-      this.server.to(senderSocketId).emit('incoming-p2p-message', {
-        message: newMessage,
-      });
+      for (let i = 0; i < conversation.participants.length; i++) {
+        const participantId = conversation.participants[i];
+        const socketId = await this.redisClient.get(participantId);
+        if (socketId) {
+          this.server.to(socketId).emit('incoming-p2p-message', {
+            message: newMessage,
+          });
+        }
+      }
     }
   }
 }

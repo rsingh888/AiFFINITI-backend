@@ -46,7 +46,11 @@ export const ConversationType = {
 export const ChatMessageType = {
   TEXT: 'text',
   IMAGE: 'image',
-  GAME_REQUEST: 'game-request',
+  GAME_REQUESTED: 'game-requested',
+  GAME_REQUEST_ACCEPTED: 'game-request-accepted',
+  GAME_REQUEST_REJECTED: 'game-request-rejected',
+  GAME_STARTED: 'game-started',
+  GAME_RESULT: 'game-result',
 } as const;
 
 export type ChatMessageTypeTypes =

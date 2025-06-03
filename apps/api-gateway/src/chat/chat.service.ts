@@ -65,6 +65,7 @@ export class ChatApiGatewayService {
     const allConversationsWithConversationTitle = allConversations.map(
       ({ id, participants, ...rest }) => {
         return {
+          id,
           ...rest,
           conversationTitle: `Dummy_Title_${id.substring(3, 7)}`,
           participants: participants.map((participantId) => ({

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { schema } from '../../../../schema/index';
 
-import { eq, desc, sql, and } from 'drizzle-orm';
+import { eq, desc, sql, and, asc } from 'drizzle-orm';
 import { GetChatMessagesDto } from './dto/get-chat-messages.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -62,9 +62,22 @@ export class ChatApiGatewayService {
     //   ),
     // }));
 
+    const allConversationsWithConversationTitle = allConversations.map(
+      ({ id, participants, ...rest }) => {
+        return {
+          ...rest,
+          conversationTitle: `Dummy_Title_${id.substring(3, 7)}`,
+          participants: participants.map((participantId) => ({
+            participantId,
+            name: `Dummy_Name_${participantId.substring(3, 7)}`,
+          })),
+        };
+      },
+    );
+
     return {
       isSuccess: true,
-      data: { conversations: allConversations },
+      data: { conversations: allConversationsWithConversationTitle },
     };
   }
 
@@ -94,7 +107,7 @@ export class ChatApiGatewayService {
       })
       .from(schema.chat)
       .where(eq(schema.chat.conversationId, dto.conversationId))
-      .orderBy(desc(schema.chat.createdAt))
+      .orderBy(asc(schema.chat.createdAt))
       .offset(dto.offset)
       .limit(dto.limit);
 

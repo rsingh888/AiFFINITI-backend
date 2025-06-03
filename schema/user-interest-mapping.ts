@@ -1,9 +1,11 @@
+// user-interest-mapping.ts
 import {
   pgTable,
-  serial,
-  text,
+  varchar,
   integer,
   primaryKey,
+  text,
+  serial,
 } from 'drizzle-orm/pg-core';
 import { user } from './user';
 
@@ -15,7 +17,7 @@ export const userInterests = pgTable('interests', {
 export const userInterestMapping = pgTable(
   'interest-mapping',
   {
-    userId: integer('user-id')
+    userId: varchar('user-id', { length: 255 })
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     interestId: integer('interest-id')

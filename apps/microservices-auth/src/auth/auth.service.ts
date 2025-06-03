@@ -55,9 +55,8 @@ export class AuthService {
     return { ...data.user };
   }
 
-  // Private user id token
-
-  private async getUserIdFromToken(token: string): Promise<number> {
+  // Updated
+  private async getUserIdFromToken(token: string): Promise<string> {
     const { data: session, error } = await this.supabase.auth.getUser(token);
     if (error || !session?.user) throw new Error('Invalid token');
 
@@ -75,7 +74,7 @@ export class AuthService {
       );
 
     if (result.length === 0) throw new Error('User not found');
-    return result[0].id;
+    return result[0].id; // Now ----> Supabase userid
   }
 
   async sendOtp(phone: string) {
@@ -118,13 +117,14 @@ export class AuthService {
         .from(schema.user)
         .where(eq(schema.user.phone, validUser.phone));
 
-      let userId: number;
+      let userId: string;
       let isNewUser = false;
 
       if (existingUser.length === 0) {
         const insertedUser = await this.db
           .insert(schema.user)
           .values({
+            id: validUser.id, // Provide the Supabase user id
             phone: validUser.phone,
             email: validUser.email ?? '',
             isEmailVerified: !!validUser.email, // true if email exists
@@ -133,7 +133,7 @@ export class AuthService {
           })
           .returning();
 
-        userId = insertedUser[0].id;
+        userId = insertedUser[0].id; // UUID
 
         await this.db.insert(schema.userInfo).values({
           userId,
@@ -160,8 +160,6 @@ export class AuthService {
       throw new Error(`Phone sign-in failed: ${msg}`);
     }
   }
-
-  // Sign In with Oauth
 
   async socialLogin(accessToken: string) {
     try {
@@ -200,6 +198,7 @@ export class AuthService {
 
       if (existingUser.length === 0) {
         await this.db.insert(schema.user).values({
+          id: validUser.id,
           phone: userPhone,
           email: userEmail,
           isEmailVerified,
@@ -210,58 +209,10 @@ export class AuthService {
       return {
         success: true,
         message: 'User synced to DB',
-        // user: userInfo,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`OAuth Sign-In failed: ${message}`);
-    }
-  }
-
-  // NickName and Date of Birth Updation
-
-  async updateNickNameDOB(
-    accessToken: string,
-    data: {
-      nickName: string;
-      dateOfBirth: Date;
-    },
-  ) {
-    try {
-      const userId = await this.getUserIdFromToken(accessToken);
-      const { nickName, dateOfBirth } = data;
-
-      const parsedDateOfBirth = new Date(dateOfBirth);
-
-      const existingUserInfo = await this.db
-        .select()
-        .from(schema.userInfo)
-        .where(eq(schema.userInfo.userId, userId));
-
-      if (existingUserInfo.length === 0) {
-        await this.db.insert(schema.userInfo).values({
-          userId,
-          nickName,
-          dateOfBirth: parsedDateOfBirth,
-        });
-        await this.db
-          .update(schema.user)
-          .set({ loginFormCheckPoint: 'INTRO_DONE' })
-          .where(eq(schema.user.id, userId));
-      } else {
-        await this.db
-          .update(schema.userInfo)
-          .set({
-            nickName,
-            dateOfBirth: parsedDateOfBirth,
-          })
-          .where(eq(schema.userInfo.userId, userId));
-      }
-
-      return { success: true, message: 'User info updated successfully' };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`Failed to update user info: ${message}`);
     }
   }
 
@@ -273,9 +224,7 @@ export class AuthService {
 
     return await this.db.transaction(async (trx) => {
       const userMapped = await trx
-        .select({
-          name: schema.userInterests.name,
-        })
+        .select({ name: schema.userInterests.name })
         .from(schema.userInterestMapping)
         .innerJoin(
           schema.userInterests,
@@ -284,8 +233,6 @@ export class AuthService {
         .where(eq(schema.userInterestMapping.userId, userId));
 
       const alreadyMappedNames = userMapped.map((item) => item.name);
-      const isFirstTime = alreadyMappedNames.length === 0;
-
       const newInterestNames = interests.filter(
         (name) => !alreadyMappedNames.includes(name),
       );
@@ -296,7 +243,6 @@ export class AuthService {
         .where(inArray(schema.userInterests.name, newInterestNames));
 
       const existingNames = existingInterests.map((i) => i.name);
-
       const interestsToCreate = newInterestNames.filter(
         (name) => !existingNames.includes(name),
       );
@@ -323,12 +269,10 @@ export class AuthService {
         await trx.insert(schema.userInterestMapping).values(newMappings);
       }
 
-      if (isFirstTime) {
+      if (alreadyMappedNames.length === 0 && interests.length > 0) {
         await trx
           .update(schema.user)
-          .set({
-            loginFormCheckPoint: 'INTREST_DONE',
-          })
+          .set({ loginFormCheckPoint: 'INTREST_DONE' })
           .where(eq(schema.user.id, userId));
       }
 
@@ -339,8 +283,6 @@ export class AuthService {
       };
     });
   }
-
-  // Location Updation
 
   async updateLocation(
     accessToken: string,
@@ -383,8 +325,6 @@ export class AuthService {
     }
   }
 
-  // Gender Updation
-
   async updateGender(accessToken: string, data: { gender: string }) {
     try {
       const userId = await this.getUserIdFromToken(accessToken);
@@ -404,23 +344,16 @@ export class AuthService {
         throw new Error('User info not found');
       }
 
-      const isFirstTime = !existingUserInfo[0].gender; // true if gender is empty or null
+      await this.db
+        .update(schema.userInfo)
+        .set({ gender: gender as 'Male' | 'Female' })
+        .where(eq(schema.userInfo.userId, userId));
 
-      if (isFirstTime === true) {
-        await this.db
-          .update(schema.userInfo)
-          .set({ gender: gender as 'Male' | 'Female' })
-          .where(eq(schema.userInfo.userId, userId));
-
+      if (!existingUserInfo[0].gender) {
         await this.db
           .update(schema.user)
           .set({ loginFormCheckPoint: 'GENDER_DONE' })
           .where(eq(schema.user.id, userId));
-      } else {
-        await this.db
-          .update(schema.userInfo)
-          .set({ gender: gender as 'Male' | 'Female' })
-          .where(eq(schema.userInfo.userId, userId));
       }
 
       return { success: true, message: 'Gender updated successfully' };
@@ -441,14 +374,10 @@ export class AuthService {
       const { distancePreferredInKm } = data;
 
       if (
-        distancePreferredInKm === undefined ||
-        distancePreferredInKm === null
+        typeof distancePreferredInKm !== 'number' ||
+        distancePreferredInKm < 0
       ) {
-        throw new Error('distancePreferredInKm must be provided');
-      }
-
-      if (distancePreferredInKm < 0) {
-        throw new Error('Distance cannot be negative');
+        throw new Error('distancePreferredInKm must be a non-negative number');
       }
 
       const existingUserInfo = await this.db
@@ -478,50 +407,67 @@ export class AuthService {
     }
   }
 
-  // photos Updation
-
-  async updatePhotos(
-    accessToken: string,
-    data: {
-      photos?: string[];
-    },
+  // Helper function with original naming preserved
+  private async upsertUserMedia(
+    userId: string,
+    data: Partial<{ photos: string[]; videos: string[] }>,
+    loginFormCheckPoint:
+      | 'STARTED'
+      | 'PHONE_DONE'
+      | 'INTRO_DONE'
+      | 'INTREST_DONE'
+      | 'LOCATION_DONE'
+      | 'GENDER_DONE'
+      | 'DISTANCE_PREFERRED_DONE'
+      | 'PHOTOS_DONE'
+      | 'VIDEO_DONE',
   ) {
+    const existingMedia = await this.db
+      .select()
+      .from(schema.userMedia)
+      .where(eq(schema.userMedia.userId, userId));
+
+    if (existingMedia.length === 0) {
+      await this.db.insert(schema.userMedia).values({
+        userId,
+        photos: data.photos ?? [],
+        videos: data.videos ?? [],
+      });
+
+      await this.db
+        .update(schema.user)
+        .set({ loginFormCheckPoint })
+        .where(eq(schema.user.id, userId));
+    } else {
+      const currentMedia = existingMedia[0];
+
+      const updatedPhotos = data.photos
+        ? [...new Set([...(currentMedia.photos ?? []), ...data.photos])]
+        : currentMedia.photos;
+
+      const updatedVideos = data.videos
+        ? [...new Set([...(currentMedia.videos ?? []), ...data.videos])]
+        : currentMedia.videos;
+
+      await this.db
+        .update(schema.userMedia)
+        .set({
+          photos: updatedPhotos,
+          videos: updatedVideos,
+        })
+        .where(eq(schema.userMedia.userId, userId));
+    }
+  }
+
+  async updatePhotos(accessToken: string, data: { photos?: string[] }) {
     try {
       const { photos } = data;
-
       const userId = await this.getUserIdFromToken(accessToken);
-
-      const existingMedia = await this.db
-        .select()
-        .from(schema.userMedia)
-        .where(eq(schema.userMedia.userId, userId));
-
-      if (existingMedia.length === 0) {
-        await this.db.insert(schema.userMedia).values({
-          userId,
-          photos: photos ?? [],
-        });
-
-        await this.db
-          .update(schema.user)
-          .set({
-            loginFormCheckPoint: 'PHOTOS_DONE',
-          })
-          .where(eq(schema.user.id, userId));
-      } else {
-        const currentMedia = existingMedia[0];
-
-        const updatedPhotos = photos
-          ? [...new Set([...(currentMedia.photos ?? []), ...photos])] // Removing duplicates
-          : currentMedia.photos;
-
-        await this.db
-          .update(schema.userMedia)
-          .set({
-            photos: updatedPhotos,
-          })
-          .where(eq(schema.userMedia.userId, userId));
-      }
+      await this.upsertUserMedia(
+        userId,
+        { photos: photos ?? [] },
+        'PHOTOS_DONE',
+      );
 
       return { success: true, message: 'Media updated successfully' };
     } catch (err) {
@@ -530,45 +476,17 @@ export class AuthService {
     }
   }
 
-  // video Updation
-
-  async updateVideo(
-    accessToken: string,
-    data: {
-      videoUrl?: string;
-    },
-  ) {
+  async updateVideo(accessToken: string, data: { videoUrl?: string }) {
     try {
       const { videoUrl } = data;
+      if (!videoUrl) {
+        throw new Error('videoUrl must be provided');
+      }
 
       const userId = await this.getUserIdFromToken(accessToken);
+      await this.upsertUserMedia(userId, { videos: [videoUrl] }, 'VIDEO_DONE');
 
-      const existingMedia = await this.db
-        .select()
-        .from(schema.userMedia)
-        .where(eq(schema.userMedia.userId, userId));
-
-      const currentMedia = existingMedia[0];
-
-      const updatedVideos = videoUrl
-        ? [...new Set([...(currentMedia.videos ?? []), videoUrl])] // Removing duplicates
-        : currentMedia.videos;
-
-      await this.db
-        .update(schema.userMedia)
-        .set({
-          videos: updatedVideos,
-        })
-        .where(eq(schema.userMedia.userId, userId));
-
-      await this.db
-        .update(schema.user)
-        .set({
-          loginFormCheckPoint: 'VIDEO_DONE',
-        })
-        .where(eq(schema.user.id, userId));
-
-      return { message: 'Media updated successfully' };
+      return { success: true, message: 'Media updated successfully' };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       throw new Error(`Failed to update media: ${errorMessage}`);
@@ -585,21 +503,37 @@ export class AuthService {
     const email = user.email;
     const phone = user.phone;
 
+    if (!email && !phone) {
+      throw new Error('User email or phone must be present');
+    }
+
     // Get user from DB
-    const userRow = await this.db
-      .select()
-      .from(schema.user)
-      .where(
-        email
-          ? eq(schema.user.email, email)
-          : eq(schema.user.phone, phone ?? ''),
-      );
+    type UserRow = {
+      id: string;
+      email: string;
+      phone: string;
+      [key: string]: any;
+    };
+    let userRow: UserRow[];
+    if (email) {
+      userRow = (await this.db
+        .select()
+        .from(schema.user)
+        .where(eq(schema.user.email, email))) as UserRow[];
+    } else if (phone) {
+      userRow = (await this.db
+        .select()
+        .from(schema.user)
+        .where(eq(schema.user.phone, phone))) as UserRow[];
+    } else {
+      throw new Error('User email or phone must be present');
+    }
 
     if (userRow.length === 0) {
       throw new Error('User not found');
     }
 
-    const userId = userRow[0].id;
+    const userId: string = userRow[0].id;
     const [
       intro,
       location,

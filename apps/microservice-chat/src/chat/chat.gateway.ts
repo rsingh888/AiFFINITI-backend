@@ -23,7 +23,10 @@ import { ChatMessageType } from 'schema/chatting_schemas';
 import { eq } from 'drizzle-orm';
 import { SupabaseUser } from 'apps/api-gateway/src/common/types/userInterface';
 
-const allowedOrigins = ['http://localhost:4000', '*'];
+const allowedOrigins = [
+  'http://localhost:4000',
+  'https://testing-aiffiniti-frontend-testing.vercel.app',
+];
 
 interface AuthenticatedSocket extends Socket {
   data: {

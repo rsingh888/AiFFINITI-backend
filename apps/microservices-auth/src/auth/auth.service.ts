@@ -216,6 +216,59 @@ export class AuthService {
     }
   }
 
+  async updateNickNameDOB(
+    accessToken: string,
+    data: {
+      nickName: string;
+      dateOfBirth: Date;
+    },
+  ) {
+    try {
+      const userId = await this.getUserIdFromToken(accessToken);
+      const { nickName, dateOfBirth } = data;
+
+      if (!nickName || !dateOfBirth) {
+        throw new Error('nickName and dateOfBirth are required');
+      }
+
+      const parsedDateOfBirth = new Date(dateOfBirth);
+      if (isNaN(parsedDateOfBirth.getTime())) {
+        throw new Error('Invalid dateOfBirth');
+      }
+
+      const existingUserInfo = await this.db
+        .select()
+        .from(schema.userInfo)
+        .where(eq(schema.userInfo.userId, userId));
+
+      if (existingUserInfo.length === 0) {
+        await this.db.insert(schema.userInfo).values({
+          userId,
+          nickName,
+          dateOfBirth: parsedDateOfBirth,
+        });
+      } else {
+        await this.db
+          .update(schema.userInfo)
+          .set({
+            nickName,
+            dateOfBirth: parsedDateOfBirth,
+          })
+          .where(eq(schema.userInfo.userId, userId));
+      }
+
+      await this.db
+        .update(schema.user)
+        .set({ loginFormCheckPoint: 'INTRO_DONE' })
+        .where(eq(schema.user.id, userId));
+
+      return { success: true, message: 'User info updated successfully' };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to update user info: ${message}`);
+    }
+  }
+
   // Interests Updation
 
   async updateInterest(accessToken: string, data: { interests: string[] }) {
@@ -272,7 +325,7 @@ export class AuthService {
       if (alreadyMappedNames.length === 0 && interests.length > 0) {
         await trx
           .update(schema.user)
-          .set({ loginFormCheckPoint: 'INTREST_DONE' })
+          .set({ loginFormCheckPoint: 'INTEREST_DONE' })
           .where(eq(schema.user.id, userId));
       }
 
@@ -415,7 +468,7 @@ export class AuthService {
       | 'STARTED'
       | 'PHONE_DONE'
       | 'INTRO_DONE'
-      | 'INTREST_DONE'
+      | 'INTEREST_DONE'
       | 'LOCATION_DONE'
       | 'GENDER_DONE'
       | 'DISTANCE_PREFERRED_DONE'

@@ -4,7 +4,7 @@ import * as cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
 
 const allowedOrigin = [
-  'http://localhost:4000',
+  'http://localhost:5173',
   'https://aiffiniti-frontend-testing.vercel.app',
 ];
 

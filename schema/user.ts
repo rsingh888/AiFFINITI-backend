@@ -4,7 +4,7 @@ export const loginFormCheckPointEnum = pgEnum('login-form-checkpoint', [
   'STARTED',
   'PHONE_DONE',
   'INTRO_DONE',
-  'INTREST_DONE',
+  'INTEREST_DONE',
   'LOCATION_DONE',
   'GENDER_DONE',
   'DISTANCE_PREFERRED_DONE',

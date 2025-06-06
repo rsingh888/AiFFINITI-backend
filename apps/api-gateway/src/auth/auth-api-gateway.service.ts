@@ -29,31 +29,6 @@ export class AuthApiGatewayService {
     return result; // { accessToken, refreshToken }
   }
 
-  async postPhoneLogin(payload: { phone: string; otp?: string }) {
-    const { phone, otp } = payload;
-
-    if (!phone) {
-      throw new Error('Phone number is required');
-    }
-
-    if (!otp) {
-      const status: string = await firstValueFrom(
-        this.authService.send<string>({ cmd: 'auth-send-otp' }, { phone }),
-      );
-
-      return status;
-    } else {
-      const status: string = await firstValueFrom(
-        this.authService.send<string>(
-          { cmd: 'auth-verify-otp' },
-          { phone, otp },
-        ),
-      );
-
-      return status;
-    }
-  }
-
   async postSocialLogin(accessToken: string) {
     const accessTokenValue = accessToken;
 
@@ -227,34 +202,9 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdateVideo(accessToken: string, data: { videoUrl: string }) {
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access denied');
-    }
-
-    const { videoUrl } = data;
-
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-video' },
-        {
-          token: accessTokenValue,
-          data: {
-            videoUrl,
-          },
-        },
-      ),
-    );
-
-    return status;
-  }
-
   // -----------------------GET REquest-------------------
 
   async getUserDetails(token: string): Promise<{
-    phone?: string;
     email?: string;
     nickName: string;
     dateOfBirth: string;
@@ -263,11 +213,9 @@ export class AuthApiGatewayService {
     gender: string;
     distancePreferredInKm: number;
     photos: string[];
-    videos: string[];
   }> {
     return firstValueFrom(
       this.authService.send<{
-        phone?: string;
         email?: string;
         nickName: string;
         dateOfBirth: string;
@@ -276,7 +224,6 @@ export class AuthApiGatewayService {
         gender: string;
         distancePreferredInKm: number;
         photos: string[];
-        videos: string[];
       }>({ cmd: 'get-user-details' }, token),
     );
   }

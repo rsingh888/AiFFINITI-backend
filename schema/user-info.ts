@@ -2,7 +2,7 @@ import {
   pgTable,
   serial,
   date,
-  text,
+  varchar,
   integer,
   pgEnum,
 } from 'drizzle-orm/pg-core';
@@ -16,7 +16,7 @@ export const userInfo = pgTable('user-info', {
   userId: integer('user-id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  nickName: text('nick-name'),
+  nickName: varchar('nick-name', { length: 255 }),
   dateOfBirth: date('date-of-birth', { mode: 'date' }),
   gender: genderEnum('gender'),
   distancePreferredInKm: integer('distance-preferred-in-km'),

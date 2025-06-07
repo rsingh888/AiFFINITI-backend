@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 @Injectable()
 export class AuthApiGatewayService {
   constructor(@Inject('AUTH_SERVICE') private authService: ClientProxy) {}
+
   getHello(): string {
     return 'Hello World!';
   }

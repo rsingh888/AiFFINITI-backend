@@ -19,6 +19,7 @@ export class ChatApiGatewayService {
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
+
   async getConversationsForUser(userId: string, dto: GetConversationsDto) {
     const allConversations = await this.db
       .select({
@@ -29,7 +30,7 @@ export class ChatApiGatewayService {
         // unreadMessagesCount: schema.conversations.unreadMessagesCount,
         lastMessage: {
           id: schema.chat.id,
-          messageData: schema.chat.messageData,
+          message: schema.chat.message,
           createdAt: schema.chat.createdAt,
           senderId: schema.chat.senderId,
         },
@@ -78,6 +79,7 @@ export class ChatApiGatewayService {
 
     return {
       isSuccess: true,
+      message: 'Conversations fetched successfully',
       data: { conversations: allConversationsWithConversationTitle },
     };
   }
@@ -102,7 +104,7 @@ export class ChatApiGatewayService {
         id: schema.chat.id,
         type: schema.chat.type,
         senderId: schema.chat.senderId,
-        messageData: schema.chat.messageData,
+        message: schema.chat.message,
         createdAt: schema.chat.createdAt,
         readAt: schema.chat.readAt,
       })
@@ -144,6 +146,6 @@ export class ChatApiGatewayService {
       })
       .returning();
 
-    return inserted[0];
+    return { isSuccess: true, data: { conversation: inserted[0] } };
   }
 }

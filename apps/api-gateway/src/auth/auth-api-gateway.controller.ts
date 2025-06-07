@@ -7,14 +7,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthApiGatewayService } from './auth-api-gateway.service';
-import { PhoneLoginDto } from './dto/phone-login.dto';
 import { UpdateIntroDto } from './dto/update-intro.dto';
 import { UpdateInterestDto } from './dto/update-interests.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { UpdateGenderDto } from './dto/update-gender.dto';
 import { UpdateDistanceDto } from './dto/update-distance.dto';
 import { UpdatePhotosDto } from './dto/update-photos.dto';
-import { UpdateVideoDto } from './dto/update-video.dto';
 import { AuthGuard } from '../common/guard/auth.guard';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 
@@ -32,16 +30,11 @@ export class AuthApiGatewayController {
     return this.AuthApiGatewayService.getAuthHello();
   }
 
-  // user ko new access token ke liye
+  // For granting new access token to user
 
   @Post('refresh-token')
   async refreshToken(@Body() body: RefreshTokenDto) {
     return this.AuthApiGatewayService.refreshAccessToken(body.refreshToken);
-  }
-
-  @Post('phone-login')
-  async postPhoneLogin(@Body() body: PhoneLoginDto) {
-    return this.AuthApiGatewayService.postPhoneLogin(body);
   }
 
   @Post('social-login')
@@ -147,20 +140,6 @@ export class AuthApiGatewayController {
     }
 
     return this.AuthApiGatewayService.postUpdatePhotos(token, body);
-  }
-  @UseGuards(AuthGuard)
-  @Post('user-video')
-  async postUserVideo(
-    @Headers('authorization') authHeader: string,
-    @Body() body: UpdateVideoDto,
-  ) {
-    const token = authHeader?.replace(/^Bearer\s+/i, '');
-
-    if (!token) {
-      throw new Error('Access token not defined');
-    }
-
-    return this.AuthApiGatewayService.postUpdateVideo(token, body);
   }
 
   // -----------------GET REQUEST ----------------------

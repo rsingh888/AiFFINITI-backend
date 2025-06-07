@@ -35,6 +35,7 @@ import {
   text,
   timestamp,
 } from 'drizzle-orm/pg-core';
+import { user } from './user';
 import { gameSessions } from './game_sessions';
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 // import { user } from './user';
@@ -70,8 +71,9 @@ export const conversations = pgTable('conversations', {
 export const chat = pgTable('chat', {
   id: uuid('id').primaryKey().defaultRandom(),
   type: varchar('type', { length: 255 }).notNull(),
-  senderId: varchar('sender_id', { length: 255 }).notNull(),
-  // .references(() => user.id),
+  senderId: varchar('sender_id', { length: 255 })
+    .notNull()
+    .references(() => user.id),
   message: text('message'),
   gameSessionId: uuid('game_id').references(() => gameSessions.id),
   imageUrl: text('image_url'),

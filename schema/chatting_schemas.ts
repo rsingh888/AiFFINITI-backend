@@ -35,6 +35,7 @@ import {
   text,
   timestamp,
 } from 'drizzle-orm/pg-core';
+import { user } from './user';
 // import { user } from './user';
 
 export const ConversationType = {
@@ -67,8 +68,9 @@ export const conversations = pgTable('conversations', {
 export const chat = pgTable('chat', {
   id: uuid('id').primaryKey().defaultRandom(),
   type: text('type').notNull(),
-  senderId: text('sender_id').notNull(),
-  // .references(() => user.id),
+  senderId: text('sender_id')
+    .notNull()
+    .references(() => user.id),
   messageData: jsonb('message_data').notNull(),
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
   readAt: timestamp('read_at', { mode: 'date' }),

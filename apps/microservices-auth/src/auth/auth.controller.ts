@@ -1,15 +1,12 @@
 import { Controller } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { MessagePattern } from '@nestjs/microservices';
-import { SendOtpDto } from './dto/send-otp.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { UpdateUserIntroDto } from './dto/update-user-intro.dto';
 import { UpdateUserInterestDto } from './dto/update-user-interests.dto';
 import { UpdateLocationDto } from './dto/update-user-location.dto';
 import { UpdateUserGenderDto } from './dto/update-user-gender.dto';
 import { UpdateUserDistancePreferredInKmDto } from './dto/update-user-distance-preferred.dto';
 import { UpdateUserPhotosDto } from './dto/update-user-photos.dto';
-import { UpdateUserVideoDto } from './dto/update-user-video.dto';
 
 @Controller()
 export class AuthController {
@@ -27,20 +24,10 @@ export class AuthController {
     return this.authService.verifyToken(accessToken);
   }
 
-  // user ko new access token dene ke liye --> if expired
+  // for granting new access token to user --> if expired
   @MessagePattern({ cmd: 'refresh-token' })
   refreshToken(data: { refreshToken: string }) {
     return this.authService.refreshSupabaseSession(data.refreshToken);
-  }
-
-  @MessagePattern({ cmd: 'auth-send-otp' })
-  async sendOtp(data: SendOtpDto) {
-    return this.authService.sendOtp(data.phone);
-  }
-
-  @MessagePattern({ cmd: 'auth-verify-otp' })
-  async verifyOtp(data: VerifyOtpDto) {
-    return this.authService.verifyOtp(data.phone, data.otp);
   }
 
   @MessagePattern({ cmd: 'auth-social-login' })
@@ -97,11 +84,6 @@ export class AuthController {
     data: UpdateUserPhotosDto;
   }) {
     return this.authService.updatePhotos(payload.token, payload.data);
-  }
-
-  @MessagePattern({ cmd: 'update-user-video' })
-  async updateUserVideo(payload: { token: string; data: UpdateUserVideoDto }) {
-    return this.authService.updateVideo(payload.token, payload.data);
   }
 
   // ---------------------------------GET USER DETAILS----------------------------------------------------

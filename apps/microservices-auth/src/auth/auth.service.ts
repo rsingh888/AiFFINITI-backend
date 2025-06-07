@@ -22,7 +22,7 @@ export class AuthService {
     return 'Hello';
   }
 
-  // User ko new access token dene ke liye
+  // for granting new access token to user
 
   async refreshSupabaseSession(refreshToken: string) {
     const client = createClient(
@@ -46,7 +46,7 @@ export class AuthService {
     };
   }
 
-  // Guard ke liye
+  // For Guard
   async verifyToken(accessToken: string) {
     const { data, error } = await this.supabase.auth.getUser(accessToken);
     if (error || !data?.user) {
@@ -57,108 +57,24 @@ export class AuthService {
 
   // Private user id token
 
-  private async getUserIdFromToken(token: string): Promise<number> {
+  private async getUserIdFromToken(token: string): Promise<string> {
     const { data: session, error } = await this.supabase.auth.getUser(token);
     if (error || !session?.user) throw new Error('Invalid token');
 
     const user: User = session.user;
     const email = user.email;
-    const phone = user.phone;
+
+    if (!email) {
+      throw new Error('User email is missing');
+    }
 
     const result = await this.db
       .select()
       .from(schema.user)
-      .where(
-        email
-          ? eq(schema.user.email, email)
-          : eq(schema.user.phone, phone ?? ''),
-      );
+      .where(eq(schema.user.email, email));
 
     if (result.length === 0) throw new Error('User not found');
-    return result[0].id;
-  }
-
-  async sendOtp(phone: string) {
-    try {
-      const { error } = await this.supabase.auth.signInWithOtp({
-        phone,
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Failed to send OTP');
-      }
-
-      return { success: true, message: 'OTP sent successfully' };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Sending OTP failed: ${msg}`);
-    }
-  }
-
-  async verifyOtp(phone: string, otp: string) {
-    try {
-      const { data: session, error } = await this.supabase.auth.verifyOtp({
-        phone,
-        token: otp,
-        type: 'sms',
-      });
-
-      if (error || !session?.user) {
-        throw new Error(error?.message || 'OTP verification failed');
-      }
-
-      const validUser = session.user;
-
-      if (!validUser.phone) {
-        throw new Error('Verified user does not have a phone number');
-      }
-
-      const existingUser = await this.db
-        .select()
-        .from(schema.user)
-        .where(eq(schema.user.phone, validUser.phone));
-
-      let userId: number;
-      let isNewUser = false;
-
-      if (existingUser.length === 0) {
-        const insertedUser = await this.db
-          .insert(schema.user)
-          .values({
-            phone: validUser.phone,
-            email: validUser.email ?? '',
-            isEmailVerified: !!validUser.email, // true if email exists
-            loginFormCheckPoint: 'PHONE_DONE',
-            authProvider: 'phone',
-          })
-          .returning();
-
-        userId = insertedUser[0].id;
-
-        await this.db.insert(schema.userInfo).values({
-          userId,
-        });
-        isNewUser = true;
-
-        return {
-          success: true,
-          message: 'User Created',
-          session,
-        };
-      }
-
-      if (!isNewUser) {
-        return {
-          success: true,
-          message: 'User already exists',
-          session,
-          checkPoint: existingUser[0]?.loginFormCheckPoint,
-        };
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Phone sign-in failed: ${msg}`);
-    }
+    return result[0].id; // Now gives ---> Supabase user id
   }
 
   // Sign In with Oauth
@@ -177,7 +93,6 @@ export class AuthService {
 
       const validUser = session.user;
       const userEmail = validUser.email;
-      const userPhone = validUser.phone ?? '';
       const userMetadata = validUser.user_metadata ?? {};
       const userProvider = validUser.app_metadata?.provider as
         | 'google'
@@ -198,19 +113,28 @@ export class AuthService {
         .from(schema.user)
         .where(eq(schema.user.email, userEmail));
 
-      if (existingUser.length === 0) {
-        await this.db.insert(schema.user).values({
-          phone: userPhone,
-          email: userEmail,
-          isEmailVerified,
-          authProvider: userProvider,
-        });
+      if (existingUser.length != 0) {
+        return {
+          success: true,
+          message: 'User already exist',
+          userDetail: {
+            email: userEmail,
+            loginCheckPoint: existingUser[0].loginFormCheckPoint,
+          },
+        };
       }
+
+      await this.db.insert(schema.user).values({
+        id: validUser.id,
+        email: userEmail,
+        isEmailVerified,
+        authProvider: userProvider,
+        loginFormCheckPoint: 'STARTED',
+      });
 
       return {
         success: true,
-        message: 'User synced to DB',
-        // user: userInfo,
+        message: 'User Added to DB',
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -218,7 +142,7 @@ export class AuthService {
     }
   }
 
-  // NickName and Date of Birth Updation
+  // NickName and Date of Birth Update
 
   async updateNickNameDOB(
     accessToken: string,
@@ -230,6 +154,10 @@ export class AuthService {
     try {
       const userId = await this.getUserIdFromToken(accessToken);
       const { nickName, dateOfBirth } = data;
+
+      if (!nickName || !dateOfBirth) {
+        throw new Error('Nick Name and Date of Birth are required');
+      }
 
       const parsedDateOfBirth = new Date(dateOfBirth);
 
@@ -256,16 +184,21 @@ export class AuthService {
             dateOfBirth: parsedDateOfBirth,
           })
           .where(eq(schema.userInfo.userId, userId));
+
+        return {
+          success: true,
+          message: 'User Info updated successfully',
+        };
       }
 
-      return { success: true, message: 'User info updated successfully' };
+      return { success: true, message: 'User Info Added successfully' };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to update user info: ${message}`);
     }
   }
 
-  // Interests Updation
+  // Interests Update
 
   async updateInterest(accessToken: string, data: { interests: string[] }) {
     const userId = await this.getUserIdFromToken(accessToken);
@@ -340,7 +273,7 @@ export class AuthService {
     });
   }
 
-  // Location Updation
+  // Location Update
 
   async updateLocation(
     accessToken: string,
@@ -383,7 +316,7 @@ export class AuthService {
     }
   }
 
-  // Gender Updation
+  // Gender Update
 
   async updateGender(accessToken: string, data: { gender: string }) {
     try {
@@ -430,7 +363,7 @@ export class AuthService {
     }
   }
 
-  // Distance Updation
+  // Distance Update
 
   async updateDistancePreferred(
     accessToken: string,
@@ -478,7 +411,7 @@ export class AuthService {
     }
   }
 
-  // photos Updation
+  // photos Update
 
   async updatePhotos(
     accessToken: string,
@@ -523,57 +456,14 @@ export class AuthService {
           .where(eq(schema.userMedia.userId, userId));
       }
 
-      return { success: true, message: 'Media updated successfully' };
+      return { success: true, message: 'Photos updated successfully' };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       throw new Error(`Failed to update media: ${errorMessage}`);
     }
   }
 
-  // video Updation
-
-  async updateVideo(
-    accessToken: string,
-    data: {
-      videoUrl?: string;
-    },
-  ) {
-    try {
-      const { videoUrl } = data;
-
-      const userId = await this.getUserIdFromToken(accessToken);
-
-      const existingMedia = await this.db
-        .select()
-        .from(schema.userMedia)
-        .where(eq(schema.userMedia.userId, userId));
-
-      const currentMedia = existingMedia[0];
-
-      const updatedVideos = videoUrl
-        ? [...new Set([...(currentMedia.videos ?? []), videoUrl])] // Removing duplicates
-        : currentMedia.videos;
-
-      await this.db
-        .update(schema.userMedia)
-        .set({
-          videos: updatedVideos,
-        })
-        .where(eq(schema.userMedia.userId, userId));
-
-      await this.db
-        .update(schema.user)
-        .set({
-          loginFormCheckPoint: 'VIDEO_DONE',
-        })
-        .where(eq(schema.user.id, userId));
-
-      return { message: 'Media updated successfully' };
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update media: ${errorMessage}`);
-    }
-  }
+  // Video Generation using AI will be integrated later
 
   // ----------------------------------------- GET ENDPOINTS ------------------
 
@@ -583,17 +473,16 @@ export class AuthService {
 
     const user = session.user;
     const email = user.email;
-    const phone = user.phone;
+
+    if (!email) {
+      throw new Error('User email is missing');
+    }
 
     // Get user from DB
     const userRow = await this.db
       .select()
       .from(schema.user)
-      .where(
-        email
-          ? eq(schema.user.email, email)
-          : eq(schema.user.phone, phone ?? ''),
-      );
+      .where(eq(schema.user.email, email));
 
     if (userRow.length === 0) {
       throw new Error('User not found');
@@ -662,7 +551,6 @@ export class AuthService {
 
     return {
       email,
-      phone,
       intro: intro[0] ?? null,
       location: location[0] ?? null,
       gender: genderRow[0]?.gender ?? null,

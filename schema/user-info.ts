@@ -1,11 +1,4 @@
-import {
-  pgTable,
-  varchar,
-  date,
-  varchar,
-  integer,
-  pgEnum,
-} from 'drizzle-orm/pg-core';
+import { pgTable, varchar, date, integer, pgEnum } from 'drizzle-orm/pg-core';
 
 import { user } from './user';
 

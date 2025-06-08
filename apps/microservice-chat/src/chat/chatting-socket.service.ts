@@ -23,13 +23,19 @@ export class ChattingSocketService {
       const gameSession = await this.db.query.gameSessions.findFirst({
         where: eq(schema.gameSessions.id, lastMessage.gameSessionId),
       });
+      console.log('🟡 : ChattingSocketService : gameSession:', gameSession);
 
       const isRejected = gameSession?.requestStatus === 'rejected';
+      console.log('🟡 : ChattingSocketService : isRejected:', isRejected);
 
       const isAcceptedAndEnded =
         gameSession?.requestStatus === 'accepted' &&
         gameSession?.gameStatus === 'ended';
 
+      console.log(
+        '🟡 : ChattingSocketService : isAcceptedAndEnded:',
+        isAcceptedAndEnded,
+      );
       if (!isRejected && !isAcceptedAndEnded) {
         this.logger.error('Previous game session is still active or pending');
         return false;

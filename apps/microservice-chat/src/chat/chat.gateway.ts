@@ -131,14 +131,16 @@ export class ChatGateway
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     console.log(
-      `Message from 
+      `🟡🟠🟡🟠
+      Message from 
       socketId=${client.id}
       senderId=${client.data.userId}
       to 
       recipientId=${payload.conversationId}
       type=${payload.type}
       p2pChatData=${JSON.stringify(payload.p2pChatData)},
-      gameData=${JSON.stringify(payload.gameData)}`,
+      p2pGameData=${JSON.stringify(payload.p2pGameData)}
+      🟡🟠`,
     );
 
     const senderId = client.data.userId;
@@ -180,7 +182,8 @@ export class ChatGateway
 
     const lastMessage = messages.length > 0 ? messages[0] : undefined;
 
-    console.log(lastMessage, conversationType);
+    console.log('🟡 lastMessage', lastMessage);
+    console.log('🟡 conversationType', conversationType);
 
     if (conversationType === ChatMessageType.TEXT) {
       const isPreviousGameSettled = lastMessage
@@ -189,7 +192,7 @@ export class ChatGateway
           )
         : true;
 
-      console.log('isPreviousGameSettled', isPreviousGameSettled);
+      console.log('🟡 isPreviousGameSettled', isPreviousGameSettled);
 
       if (!isPreviousGameSettled) {
         const rejectReason = 'Cannot send message: game in progress';
@@ -227,14 +230,24 @@ export class ChatGateway
         .to(conversationId)
         .emit('incoming-p2p-message', { message: newMessage });
     } else if (conversationType === ChatMessageType.GAME) {
-      if (payload.gameData && payload.gameData.type === 'request') {
-        const isPreviousGameSettled = lastMessage
-          ? !(await this.chattingSocketService.checkIfPreviousGameIsSettled(
-              lastMessage,
-            ))
-          : true;
+      if (payload.p2pGameData && payload.p2pGameData.type === 'request') {
+        let isPreviousGameSettled = true;
 
-        if (!isPreviousGameSettled) return 'Not allowed';
+        if (lastMessage !== undefined && lastMessage !== null) {
+          isPreviousGameSettled =
+            await this.chattingSocketService.checkIfPreviousGameIsSettled(
+              lastMessage,
+            );
+        }
+
+        console.log('🟡 : isPreviousGameSettled:', isPreviousGameSettled);
+
+        if (!isPreviousGameSettled) {
+          this.logger.warn(
+            'Cannot accept game request: previous game is not settled',
+          );
+          return 'Not allowed';
+        }
 
         const participantIds = conversation.participants;
 
@@ -285,7 +298,7 @@ export class ChatGateway
         this.server.to(conversationId).emit('incoming-p2p-message', {
           message: { ...newMessage, gameSession },
         });
-      } else if (payload.gameData && payload.gameData.type === 'accept') {
+      } else if (payload.p2pGameData && payload.p2pGameData.type === 'accept') {
         if (lastMessage?.type !== ChatMessageType.GAME) {
           const rejectReason = 'Cannot accept: last message is not a game type';
           this.logger.warn(rejectReason);
@@ -342,7 +355,7 @@ export class ChatGateway
           this.logger.warn(rejectReason);
           return rejectReason;
         }
-      } else if (payload.gameData?.type === 'reject') {
+      } else if (payload.p2pGameData?.type === 'reject') {
         if (lastMessage?.type !== ChatMessageType.GAME) {
           const rejectReason = 'Cannot reject: last message is not a game type';
           this.logger.warn(rejectReason);

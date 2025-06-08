@@ -6,7 +6,7 @@ import {
   numeric,
   varchar,
 } from 'drizzle-orm/pg-core';
-// import { user } from './user';
+import { user } from './user';
 import { conversations } from './chatting_schemas';
 
 export const GameSessionRequestStatus = {
@@ -29,8 +29,9 @@ export const gameParticipants = pgTable('game-participants', {
     .notNull()
     .references(() => gameSessions.id, { onDelete: 'cascade' }),
 
-  participantId: varchar('participant_id', { length: 255 }).notNull(),
-  // .references(() => user.id, { onDelete: 'cascade' }),
+  participantId: varchar('participant_id', { length: 255 })
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
 
   score: numeric('score'),
 
@@ -49,19 +50,23 @@ export const gameSessions = pgTable('game-sessions', {
 
   gameId: varchar('game_id', { length: 255 }).notNull(),
 
-  requesterId: varchar('requester_id', { length: 255 }),
-  // .notNull()
-  // .references(() => user.id, { onDelete: 'cascade' }),
+  requesterId: varchar('requester_id', { length: 255 })
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
 
-  acceptorId: varchar('acceptor_id', { length: 255 }),
-  // .references(() => user.id, {
-  //   onDelete: 'set null',
-  // }),
+  acceptorId: varchar('acceptor_id', { length: 255 }).references(
+    () => user.id,
+    {
+      onDelete: 'set null',
+    },
+  ),
 
-  rejectorId: varchar('acceptor_id', { length: 255 }),
-  // .references(() => user.id, {
-  //   onDelete: 'set null',
-  // }),
+  rejectorId: varchar('acceptor_id', { length: 255 }).references(
+    () => user.id,
+    {
+      onDelete: 'set null',
+    },
+  ),
 
   requestedAt: timestamp('requested_at', { mode: 'date' })
     .defaultNow()

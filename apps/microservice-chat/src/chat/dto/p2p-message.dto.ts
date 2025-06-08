@@ -52,5 +52,5 @@ export class SendP2PMessageDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => GameDto)
-  gameData?: GameDto;
+  p2pGameData?: GameDto;
 }

@@ -4,7 +4,6 @@ import {
   varchar,
   integer,
   primaryKey,
-  varchar,
 } from 'drizzle-orm/pg-core';
 import { user } from './user';
 

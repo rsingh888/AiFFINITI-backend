@@ -6,8 +6,10 @@ export const loginFormCheckPointEnum = pgEnum('login-form-checkpoint', [
   'INTEREST_DONE',
   'LOCATION_DONE',
   'GENDER_DONE',
+  'GENDER_PREFERENCE_DONE',
   'DISTANCE_PREFERRED_DONE',
   'PHOTOS_DONE',
+  'VIDEO_DONE',
 ]);
 
 export const user = pgTable('users', {

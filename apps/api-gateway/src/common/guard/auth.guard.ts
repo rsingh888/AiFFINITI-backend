@@ -33,7 +33,7 @@ export class AuthGuard implements CanActivate {
 
     try {
       const user = await firstValueFrom<SupabaseUser>(
-        this.authClient.send('auth-verify-token', token),
+        this.authClient.send({ cmd: 'auth-verify-token' }, token),
       );
 
       request.user = { ...user, accessToken: token };

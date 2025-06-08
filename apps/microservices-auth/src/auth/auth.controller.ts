@@ -7,6 +7,8 @@ import { UpdateLocationDto } from './dto/update-user-location.dto';
 import { UpdateUserGenderDto } from './dto/update-user-gender.dto';
 import { UpdateUserDistancePreferredInKmDto } from './dto/update-user-distance-preferred.dto';
 import { UpdateUserPhotosDto } from './dto/update-user-photos.dto';
+import { UpdateUserGenderPreferenceDto } from './dto/update-user-gender-preference.dto';
+import { User } from '@supabase/supabase-js';
 
 @Controller()
 export class AuthController {
@@ -19,7 +21,7 @@ export class AuthController {
 
   // verify token
 
-  @MessagePattern('auth-verify-token')
+  @MessagePattern({ cmd: 'auth-verify-token' })
   async verifyToken(accessToken: string) {
     return this.authService.verifyToken(accessToken);
   }
@@ -31,13 +33,13 @@ export class AuthController {
   }
 
   @MessagePattern({ cmd: 'auth-social-login' })
-  async socialLogin(accessTokenValue: string) {
-    return this.authService.socialLogin(accessTokenValue);
+  async socialLogin(user: User) {
+    return this.authService.socialLogin(user);
   }
 
   @MessagePattern({ cmd: 'update-user-intro' })
-  async updateUserInfo(payload: { token: string; data: UpdateUserIntroDto }) {
-    return this.authService.updateNickNameDOB(payload.token, {
+  async updateUserInfo(payload: { userId: string; data: UpdateUserIntroDto }) {
+    return this.authService.updateNickNameDOB(payload.userId, {
       ...payload.data,
       dateOfBirth: new Date(payload.data.dateOfBirth),
     });
@@ -45,51 +47,62 @@ export class AuthController {
 
   @MessagePattern({ cmd: 'update-user-interest' })
   async updateUserInterests(payload: {
-    token: string;
+    userId: string;
     data: UpdateUserInterestDto;
   }) {
-    return this.authService.updateInterest(payload.token, payload.data);
+    return this.authService.updateInterest(payload.userId, payload.data);
   }
 
   @MessagePattern({ cmd: 'update-user-location' })
   async updateUserLocation(payload: {
-    token: string;
+    userId: string;
     data: UpdateLocationDto;
   }) {
-    return this.authService.updateLocation(payload.token, payload.data);
+    return this.authService.updateLocation(payload.userId, payload.data);
   }
 
   @MessagePattern({ cmd: 'update-user-gender' })
   async updateUserGender(payload: {
-    token: string;
+    userId: string;
     data: UpdateUserGenderDto;
   }) {
-    return this.authService.updateGender(payload.token, payload.data);
+    return this.authService.updateGender(payload.userId, payload.data);
+  }
+
+  @MessagePattern({ cmd: 'update-user-gender-preference' })
+  async updateUserGenderPreference(payload: {
+    userId: string;
+    data: UpdateUserGenderPreferenceDto;
+  }) {
+    return this.authService.updateGenderPreference(
+      payload.userId,
+      payload.data,
+    );
   }
 
   @MessagePattern({ cmd: 'update-user-distance-preferred' })
   async updateUserDistancePreferredInKm(payload: {
-    token: string;
+    userId: string;
     data: UpdateUserDistancePreferredInKmDto;
   }) {
     return this.authService.updateDistancePreferred(
-      payload.token,
+      payload.userId,
       payload.data,
     );
   }
 
   @MessagePattern({ cmd: 'update-user-photos' })
   async updateUserPhotos(payload: {
-    token: string;
+    userId: string;
     data: UpdateUserPhotosDto;
   }) {
-    return this.authService.updatePhotos(payload.token, payload.data);
+    return this.authService.updatePhotos(payload.userId, payload.data);
   }
 
   // ---------------------------------GET USER DETAILS----------------------------------------------------
 
   @MessagePattern({ cmd: 'get-user-details' })
-  getDetails(token: string) {
-    return this.authService.getDetails(token);
+  getDetails(userId: string) {
+    return this.authService.getDetails(userId);
   }
 }

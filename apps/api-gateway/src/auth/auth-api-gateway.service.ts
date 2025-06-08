@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
+import { User } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
@@ -29,41 +30,25 @@ export class AuthApiGatewayService {
     return result; // { accessToken, refreshToken }
   }
 
-  async postSocialLogin(accessToken: string) {
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access token needed');
-    }
-
-    // console.log('access token value ', accessTokenValue);
-
+  async postSocialLogin(user: User) {
     const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'auth-social-login' },
-        accessTokenValue,
-      ),
+      this.authService.send<string>({ cmd: 'auth-social-login' }, user),
     );
 
     return status;
   }
 
   async postUpdateIntro(
-    accessToken: string,
+    userId: string,
     data: { nickName: string; dateOfBirth: Date },
   ) {
     const { nickName, dateOfBirth } = data;
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access token needed');
-    }
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
         { cmd: 'update-user-intro' },
         {
-          token: accessTokenValue,
+          userId,
           data: {
             nickName,
             dateOfBirth,
@@ -75,19 +60,14 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdateInterest(accessToken: string, data: { interests: string[] }) {
+  async postUpdateInterest(userId: string, data: { interests: string[] }) {
     const { interests } = data;
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access denied');
-    }
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
         { cmd: 'update-user-interest' },
         {
-          token: accessTokenValue,
+          userId,
           data: {
             interests,
           },
@@ -99,7 +79,7 @@ export class AuthApiGatewayService {
   }
 
   async postUpdateLocation(
-    accessToken: string,
+    userId: string,
     data: {
       location: {
         latitude: number;
@@ -108,17 +88,12 @@ export class AuthApiGatewayService {
     },
   ) {
     const { location } = data;
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access denied');
-    }
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
         { cmd: 'update-user-location' },
         {
-          token: accessTokenValue,
+          userId,
           data: {
             location,
           },
@@ -129,19 +104,14 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdateGender(accessToken: string, data: { gender: string }) {
+  async postUpdateGender(userId: string, data: { gender: string }) {
     const { gender } = data;
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access denied');
-    }
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
         { cmd: 'update-user-gender' },
         {
-          token: accessTokenValue,
+          userId,
           data: {
             gender,
           },
@@ -152,22 +122,33 @@ export class AuthApiGatewayService {
     return status;
   }
 
+  async postUpdateGenderPreference(
+    userId: string,
+    data: { genderPreference: string },
+  ) {
+    const { genderPreference } = data;
+
+    const status = await firstValueFrom(
+      this.authService.send<string>(
+        { cmd: 'update-user-gender-preference' },
+        { userId, data: { genderPreference } },
+      ),
+    );
+
+    return status;
+  }
+
   async postUpdateDistancePreferredInKm(
-    accessToken: string,
+    userId: string,
     data: { distancePreferredInKm: number },
   ) {
     const { distancePreferredInKm } = data;
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access denied');
-    }
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
         { cmd: 'update-user-distance-preferred' },
         {
-          token: accessTokenValue,
+          userId,
           data: {
             distancePreferredInKm,
           },
@@ -178,20 +159,14 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdatePhotos(accessToken: string, data: { photos: string[] }) {
-    const accessTokenValue = accessToken;
-
-    if (!accessTokenValue) {
-      throw new Error('Access denied');
-    }
-
+  async postUpdatePhotos(userId: string, data: { photos: string[] }) {
     const { photos } = data;
 
     const status: string = await firstValueFrom(
       this.authService.send<string>(
         { cmd: 'update-user-photos' },
         {
-          token: accessTokenValue,
+          userId,
           data: {
             photos,
           },
@@ -204,7 +179,7 @@ export class AuthApiGatewayService {
 
   // -----------------------GET REquest-------------------
 
-  async getUserDetails(token: string): Promise<{
+  async getUserDetails(userId: string): Promise<{
     email?: string;
     nickName: string;
     dateOfBirth: string;
@@ -224,7 +199,7 @@ export class AuthApiGatewayService {
         gender: string;
         distancePreferredInKm: number;
         photos: string[];
-      }>({ cmd: 'get-user-details' }, token),
+      }>({ cmd: 'get-user-details' }, userId),
     );
   }
 }

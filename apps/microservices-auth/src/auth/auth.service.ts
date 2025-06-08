@@ -57,41 +57,31 @@ export class AuthService {
 
   // Private user id token
 
-  private async getUserIdFromToken(token: string): Promise<string> {
-    const { data: session, error } = await this.supabase.auth.getUser(token);
-    if (error || !session?.user) throw new Error('Invalid token');
+  // private async getUserIdFromToken(token: string): Promise<string> {
+  //   const { data: session, error } = await this.supabase.auth.getUser(token);
+  //   if (error || !session?.user) throw new Error('Invalid token');
 
-    const user: User = session.user;
-    const email = user.email;
+  //   const user: User = session.user;
+  //   const email = user.email;
 
-    if (!email) {
-      throw new Error('User email is missing');
-    }
+  //   if (!email) {
+  //     throw new Error('User email is missing');
+  //   }
 
-    const result = await this.db
-      .select()
-      .from(schema.user)
-      .where(eq(schema.user.email, email));
+  //   const result = await this.db
+  //     .select()
+  //     .from(schema.user)
+  //     .where(eq(schema.user.email, email));
 
-    if (result.length === 0) throw new Error('User not found');
-    return result[0].id; // Now gives ---> Supabase user id
-  }
+  //   if (result.length === 0) throw new Error('User not found');
+  //   return result[0].id; // Now gives ---> Supabase user id
+  // }
 
   // Sign In with Oauth
 
-  async socialLogin(accessToken: string) {
+  async socialLogin(user: User) {
     try {
-      if (!accessToken) {
-        throw new Error('Access token is missing');
-      }
-      const { data: session, error } =
-        await this.supabase.auth.getUser(accessToken);
-
-      if (error || !session?.user) {
-        throw new Error('Failed to retrieve user session from Supabase');
-      }
-
-      const validUser = session.user;
+      const validUser = user;
       const userEmail = validUser.email;
       const userMetadata = validUser.user_metadata ?? {};
       const userProvider = validUser.app_metadata?.provider as
@@ -145,14 +135,13 @@ export class AuthService {
   // NickName and Date of Birth Update
 
   async updateNickNameDOB(
-    accessToken: string,
+    userId: string,
     data: {
       nickName: string;
       dateOfBirth: Date;
     },
   ) {
     try {
-      const userId = await this.getUserIdFromToken(accessToken);
       const { nickName, dateOfBirth } = data;
 
       if (!nickName || !dateOfBirth) {
@@ -200,8 +189,7 @@ export class AuthService {
 
   // Interests Update
 
-  async updateInterest(accessToken: string, data: { interests: string[] }) {
-    const userId = await this.getUserIdFromToken(accessToken);
+  async updateInterest(userId: string, data: { interests: string[] }) {
     const { interests } = data;
 
     return await this.db.transaction(async (trx) => {
@@ -276,11 +264,10 @@ export class AuthService {
   // Location Update
 
   async updateLocation(
-    accessToken: string,
+    userId: string,
     data: { location: { latitude: number; longitude: number } },
   ) {
     try {
-      const userId = await this.getUserIdFromToken(accessToken);
       const { location } = data;
 
       const existingLocation = await this.db
@@ -318,9 +305,8 @@ export class AuthService {
 
   // Gender Update
 
-  async updateGender(accessToken: string, data: { gender: string }) {
+  async updateGender(userId: string, data: { gender: string }) {
     try {
-      const userId = await this.getUserIdFromToken(accessToken);
       const { gender } = data;
 
       const validGenders: ('Male' | 'Female')[] = ['Male', 'Female'];
@@ -363,14 +349,69 @@ export class AuthService {
     }
   }
 
+  // Gender Preference update
+  async updateGenderPreference(
+    userId: string,
+    data: { genderPreference: string },
+  ) {
+    try {
+      const { genderPreference } = data;
+
+      const validGenders: ('Male' | 'Female' | 'Both')[] = [
+        'Male',
+        'Female',
+        'Both',
+      ];
+      if (
+        !validGenders.includes(genderPreference as 'Male' | 'Female' | 'Both')
+      ) {
+        throw new Error(
+          'Invalid gender preference. Must be "Male" or "Female" or "Both',
+        );
+      }
+
+      const existingUserInfo = await this.db
+        .select()
+        .from(schema.userInfo)
+        .where(eq(schema.userInfo.userId, userId));
+
+      if (existingUserInfo.length === 0) {
+        throw new Error('User info not found');
+      }
+
+      const isFirstTime = !existingUserInfo[0].genderPreference; // true if gender preference is empty or null
+
+      await this.db
+        .update(schema.userInfo)
+        .set({
+          genderPreference: genderPreference as 'Male' | 'Female' | 'Both',
+        })
+        .where(eq(schema.userInfo.userId, userId));
+
+      if (isFirstTime === true) {
+        await this.db
+          .update(schema.user)
+          .set({ loginFormCheckPoint: 'GENDER_PREFERENCE_DONE' })
+          .where(eq(schema.user.id, userId));
+      }
+
+      return {
+        success: true,
+        message: 'Gender preference updated successfully',
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      throw new Error(`Failed to update gender: ${errorMessage}`);
+    }
+  }
+
   // Distance Update
 
   async updateDistancePreferred(
-    accessToken: string,
+    userId: string,
     data: { distancePreferredInKm: number },
   ) {
     try {
-      const userId = await this.getUserIdFromToken(accessToken);
       const { distancePreferredInKm } = data;
 
       if (
@@ -414,15 +455,13 @@ export class AuthService {
   // photos Update
 
   async updatePhotos(
-    accessToken: string,
+    userId: string,
     data: {
       photos?: string[];
     },
   ) {
     try {
       const { photos } = data;
-
-      const userId = await this.getUserIdFromToken(accessToken);
 
       const existingMedia = await this.db
         .select()
@@ -467,28 +506,17 @@ export class AuthService {
 
   // ----------------------------------------- GET ENDPOINTS ------------------
 
-  async getDetails(token: string) {
-    const { data: session, error } = await this.supabase.auth.getUser(token);
-    if (error || !session?.user) throw new Error('Invalid token');
-
-    const user = session.user;
-    const email = user.email;
-
-    if (!email) {
-      throw new Error('User email is missing');
-    }
-
+  async getDetails(userId: string) {
     // Get user from DB
     const userRow = await this.db
       .select()
       .from(schema.user)
-      .where(eq(schema.user.email, email));
+      .where(eq(schema.user.id, userId));
 
     if (userRow.length === 0) {
       throw new Error('User not found');
     }
 
-    const userId = userRow[0].id;
     const [
       intro,
       location,
@@ -550,7 +578,7 @@ export class AuthService {
     ]);
 
     return {
-      email,
+      email: userRow[0].email,
       intro: intro[0] ?? null,
       location: location[0] ?? null,
       gender: genderRow[0]?.gender ?? null,

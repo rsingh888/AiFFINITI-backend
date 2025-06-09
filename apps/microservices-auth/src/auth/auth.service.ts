@@ -729,8 +729,14 @@ export class AuthService {
           loginFormCheckPoint: 'VIDEO_DONE',
         })
         .where(eq(schema.user.id, userId));
+
+      const checkPoint = this.db
+        .select({ loginFormCheckPoint: schema.user.loginFormCheckPoint })
+        .from(schema.user)
+        .where(eq(schema.user.id, userId));
       return {
         videoUrl: videoUrl,
+        loginFormCheckPoint: checkPoint,
       };
     }
   }

@@ -61,7 +61,7 @@ export const gameSessions = pgTable('game-sessions', {
     },
   ),
 
-  rejectorId: varchar('acceptor_id', { length: 255 }).references(
+  rejectorId: varchar('rejector_id', { length: 255 }).references(
     () => user.id,
     {
       onDelete: 'set null',

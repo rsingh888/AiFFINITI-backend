@@ -23,6 +23,7 @@ import { ChatMessageType } from 'schema/chatting_schemas';
 import { and, eq, sql } from 'drizzle-orm';
 import { SupabaseUser } from 'apps/api-gateway/src/common/types/userInterface';
 import { ChattingSocketService } from './chatting-socket.service';
+import { GameService } from '../games/games.service';
 // import { GameSessionRequestStatus, GameStatus } from 'schema/game_sessions';
 
 const allowedOrigins = [
@@ -37,9 +38,34 @@ interface AuthenticatedSocket extends Socket {
   };
 }
 
+interface IAuthClientUserInfo {
+  id: string;
+  email: string | null;
+  intro: {
+    nickName: string | null;
+    dateOfBirth: Date | null;
+  };
+  location: {
+    userId: string;
+    longitude: number;
+    latitude: number;
+    street: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    zipcode: string | null;
+  };
+  gender: string | null;
+  distancePreferredInKm: number | null;
+  loginFormCheckPoint: string | null;
+  photos: string[];
+  videos: string[];
+  interests: string[];
+}
+
 @WebSocketGateway({
   cors: {
-    origin: [allowedOrigins],
+    origin: allowedOrigins,
   },
 })
 export class ChatGateway
@@ -54,6 +80,7 @@ export class ChatGateway
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
     private readonly chattingSocketService: ChattingSocketService,
+    private readonly gameService: GameService,
   ) {}
 
   onModuleInit() {
@@ -75,7 +102,7 @@ export class ChatGateway
 
     try {
       const user = await firstValueFrom<SupabaseUser>(
-        this.authClient.send('auth-verify-token', token),
+        this.authClient.send({ cmd: 'auth-verify-token' }, token),
       );
 
       if (!user?.id) {
@@ -83,8 +110,11 @@ export class ChatGateway
       }
 
       client.data.userId = user.id;
-      client.data.rooms = new Set();
-      await this.redisClient.set(user.id, client.id);
+      // client.data.rooms = new Set();
+      // await this.redisClient.set(user.id, client.id);
+
+      // Support multiple devices per user
+      await this.redisClient.sadd(user.id, client.id);
 
       this.logger.log(`Authenticated socket ${client.id} for user ${user.id}`);
     } catch (err) {
@@ -103,14 +133,22 @@ export class ChatGateway
   async handleDisconnect(client: AuthenticatedSocket) {
     const userId = client.data.userId;
 
-    if (client.data.rooms) {
-      for (const room of client.data.rooms) {
-        await client.leave(room);
-        this.logger.log(`Socket ${client.id} left room ${room}`);
+    // if (client.data.rooms) {
+    //   for (const room of client.data.rooms) {
+    //     await client.leave(room);
+    //     this.logger.log(`Socket ${client.id} left room ${room}`);
+    //   }
+    // }
+    // await this.redisClient.del(userId);
+
+    if (userId) {
+      await this.redisClient.srem(userId, client.id);
+      const remainingSockets = await this.redisClient.scard(userId);
+      if (remainingSockets === 0) {
+        await this.redisClient.del(userId);
       }
     }
 
-    await this.redisClient.del(userId);
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
@@ -147,13 +185,11 @@ export class ChatGateway
     const conversationId = payload.conversationId;
     const conversationType = payload.type;
 
-    if (!client.data.rooms.has(conversationId)) {
-      await client.join(conversationId);
-      client.data.rooms.add(conversationId);
-      this.logger.log(`Socket ${client.id} joined room ${conversationId}`);
-    }
+    // if (!client.data.rooms.has(conversationId)) {
+    //   await client.join(conversationId);
+    //   client.data.rooms.add(conversationId);
+    // }
 
-    // Step 1: Check for existing personal conversation
     const [conversation] = await this.db
       .select()
       .from(schema.conversations)
@@ -217,18 +253,20 @@ export class ChatGateway
         })
         .where(eq(schema.conversations.id, conversation.id));
 
-      // for (let i = 0; i < conversation.participants.length; i++) {
-      //   const participantId = conversation.participants[i];
-      //   const socketId = await this.redisClient.get(participantId);
-      //   if (socketId) {
-      //     this.server.to(socketId).emit('incoming-p2p-message', {
-      //       message: newMessage,
-      //     });
-      //   }
-      // }
-      this.server
-        .to(conversationId)
-        .emit('incoming-p2p-message', { message: newMessage });
+      for (let i = 0; i < conversation.participants.length; i++) {
+        const participantId = conversation.participants[i];
+        // const socketId = await this.redisClient.get(participantId);
+        const recipientSockets = await this.redisClient.smembers(participantId);
+        for (const socketId of recipientSockets) {
+          this.server.to(socketId).emit('incoming-p2p-message', {
+            message: newMessage,
+          });
+        }
+      }
+
+      // this.server
+      //   .to(conversationId)
+      //   .emit('incoming-p2p-message', { message: newMessage });
     } else if (conversationType === ChatMessageType.GAME) {
       if (payload.p2pGameData && payload.p2pGameData.type === 'request') {
         let isPreviousGameSettled = true;
@@ -244,9 +282,9 @@ export class ChatGateway
 
         if (!isPreviousGameSettled) {
           this.logger.warn(
-            'Cannot accept game request: previous game is not settled',
+            'Cannot send text message: Previous game is not settled',
           );
-          return 'Not allowed';
+          return 'Cannot send text message: Previous game is not settled';
         }
 
         const participantIds = conversation.participants;
@@ -286,18 +324,20 @@ export class ChatGateway
           })
           .where(eq(schema.conversations.id, conversation.id));
 
-        // for (let i = 0; i < conversation.participants.length; i++) {
-        //   const participantId = conversation.participants[i];
-        //   const socketId = await this.redisClient.get(participantId);
-        //   if (socketId) {
-        //     this.server.to(socketId).emit('incoming-p2p-message', {
-        //       message: { ...newMessage, gameSession },
-        //     });
-        //   }
-        // }
-        this.server.to(conversationId).emit('incoming-p2p-message', {
-          message: { ...newMessage, gameSession },
-        });
+        for (let i = 0; i < conversation.participants.length; i++) {
+          const participantId = conversation.participants[i];
+          // const socketId = await this.redisClient.get(participantId);
+          const recipientSockets =
+            await this.redisClient.smembers(participantId);
+          for (const socketId of recipientSockets) {
+            this.server.to(socketId).emit('incoming-p2p-message', {
+              message: { ...newMessage, gameSession },
+            });
+          }
+        }
+        // this.server.to(conversationId).emit('incoming-p2p-message', {
+        //   message: { ...newMessage, gameSession },
+        // });
       } else if (payload.p2pGameData && payload.p2pGameData.type === 'accept') {
         if (lastMessage?.type !== ChatMessageType.GAME) {
           const rejectReason = 'Cannot accept: last message is not a game type';
@@ -306,27 +346,105 @@ export class ChatGateway
         }
 
         if (lastMessage?.senderId === senderId) {
-          const rejectReason = 'Cannot accept:you are the requestor';
-          this.logger.warn(rejectReason);
-          return rejectReason;
-        }
-
-        if (lastMessage?.senderId === senderId) {
-          const rejectReason = 'Cannot accept:you are the requestor';
+          const rejectReason = 'Cannot accept: you are the requestor';
           this.logger.warn(rejectReason);
           return rejectReason;
         }
 
         if (lastMessage?.gameSessionId) {
-          const gameSession = await this.db.query.gameSessions.findFirst({
-            where: eq(schema.gameSessions.id, lastMessage.gameSessionId),
-          });
+          const [gameSession] = await this.db
+            .select()
+            .from(schema.gameSessions)
+            .where(eq(schema.gameSessions.id, lastMessage.gameSessionId));
+
+          if (!gameSession) {
+            const rejectReason = 'Cannot accept: no game session found';
+            this.logger.fatal(rejectReason);
+            return rejectReason;
+          }
 
           if (gameSession?.requestStatus !== 'pending') {
             const rejectReason = 'Cannot accept: Request is not pending';
             this.logger.warn(rejectReason);
             return rejectReason;
           }
+
+          let user1: IAuthClientUserInfo | undefined;
+          let user2: IAuthClientUserInfo | undefined;
+
+          try {
+            const [u1, u2] = await Promise.all([
+              firstValueFrom<IAuthClientUserInfo>(
+                this.authClient.send(
+                  { cmd: 'get-user-details' },
+                  conversation.participants.find((p) => p === senderId),
+                ),
+              ),
+              firstValueFrom<IAuthClientUserInfo>(
+                this.authClient.send(
+                  { cmd: 'get-user-details' },
+                  conversation.participants.find((p) => p !== senderId),
+                ),
+              ),
+            ]);
+            user1 = u1;
+            user2 = u2;
+          } catch (err) {
+            this.logger.fatal(
+              `Error during getting user information for game token --> ${(err as { message: string }).message}`,
+            );
+            throw new Error('Error during getting user information for game');
+          }
+
+          const [token1, token2] = await Promise.all([
+            this.gameService.getExternalData({
+              player1: {
+                id: user1?.id || 'User 1',
+                name: user1?.intro.nickName || 'User 1',
+                avatarUrl:
+                  'https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&w=200',
+              },
+              player2: {
+                id: user2?.id || 'User 1',
+                name: user2?.intro.nickName || 'User 1',
+                avatarUrl:
+                  'https://cdn2.iconfinder.com/data/icons/circle-avatars-1/128/050_girl_avatar_profile_woman_suit_student_officer-512.png',
+              },
+              sessionId: gameSession.id,
+            }),
+            this.gameService.getExternalData({
+              player2: {
+                id: user1?.id || 'User 1',
+                name: user1?.intro.nickName || 'User 1',
+                avatarUrl:
+                  'https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&w=200',
+              },
+              player1: {
+                id: user2?.id || 'User 1',
+                name: user2?.intro.nickName || 'User 1',
+                avatarUrl:
+                  'https://cdn2.iconfinder.com/data/icons/circle-avatars-1/128/050_girl_avatar_profile_woman_suit_student_officer-512.png',
+              },
+              sessionId: gameSession.id,
+            }),
+          ]);
+
+          if (!token1 || !token2) {
+            const rejectReason = 'Cannot accept: Failed to get game tokens';
+            this.logger.fatal(rejectReason);
+            return rejectReason;
+          }
+
+          const data2 = await this.chattingSocketService.updateTwoGameTokens({
+            id1: conversation.participants[0],
+            id2: conversation.participants[1],
+            token1: token1 || '',
+            token2: token2 || '',
+            gameSessionId: lastMessage.gameSessionId,
+          });
+
+          console.log('🟡🟡🟡🟡🟡🟡');
+          console.log('🟡🟡🟡🟡🟡🟡 : data2:', data2);
 
           const [newGameSession] = await this.db
             .update(schema.gameSessions)
@@ -338,6 +456,11 @@ export class ChatGateway
             .where(eq(schema.gameSessions.id, lastMessage.gameSessionId))
             .returning();
 
+          const participantsInfoArr =
+            await this.chattingSocketService.getGameSessionParticipantsWithBothTokens(
+              { gameSessionId: gameSession.id },
+            );
+
           // for (let i = 0; i < conversation.participants.length; i++) {
           //   const participantId = conversation.participants[i];
           //   const socketId = await this.redisClient.get(participantId);
@@ -347,9 +470,41 @@ export class ChatGateway
           //     });
           //   }
           // }
-          this.server.to(conversationId).emit('incoming-p2p-message', {
-            message: { ...lastMessage, gameSession: newGameSession },
-          });
+
+          for (let i = 0; i < conversation.participants.length; i++) {
+            const participantId = conversation.participants[i];
+            // const socketId = await this.redisClient.get(participantId);
+            const recipientSockets =
+              await this.redisClient.smembers(participantId);
+            for (const socketId of recipientSockets) {
+              const participantsArrayWithUserToken = participantsInfoArr.map(
+                (participantInfoObj) => {
+                  if (participantInfoObj.participantId !== participantId) {
+                    return {
+                      ...participantInfoObj,
+                      gameToken: '',
+                    };
+                  } else {
+                    return participantInfoObj;
+                  }
+                },
+              );
+
+              this.server.to(socketId).emit('incoming-p2p-message', {
+                message: {
+                  ...lastMessage,
+                  gameSession: {
+                    ...newGameSession,
+                    participants: participantsArrayWithUserToken,
+                  },
+                },
+              });
+            }
+          }
+
+          // this.server.to(conversationId).emit('incoming-p2p-message', {
+          //   message: { ...lastMessage, gameSession: newGameSession },
+          // });
         } else {
           const rejectReason = 'Cannot accept: no game session';
           this.logger.warn(rejectReason);
@@ -382,9 +537,22 @@ export class ChatGateway
           //     });
           //   }
           // }
-          this.server.to(conversationId).emit('incoming-p2p-message', {
-            message: { ...lastMessage, gameSession: newGameSession },
-          });
+
+          for (let i = 0; i < conversation.participants.length; i++) {
+            const participantId = conversation.participants[i];
+            // const socketId = await this.redisClient.get(participantId);
+            const recipientSockets =
+              await this.redisClient.smembers(participantId);
+            for (const socketId of recipientSockets) {
+              this.server.to(socketId).emit('incoming-p2p-message', {
+                message: { ...lastMessage, gameSession: newGameSession },
+              });
+            }
+          }
+
+          // this.server.to(conversationId).emit('incoming-p2p-message', {
+          //   message: { ...lastMessage, gameSession: newGameSession },
+          // });
         } else {
           const rejectReason = 'Cannot reject: no game session';
           this.logger.warn(rejectReason);

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { schema } from '../../../../schema/index';
 
-import { eq, desc, sql, and, asc } from 'drizzle-orm';
+import { eq, desc, sql, and, asc, inArray } from 'drizzle-orm';
 import { GetChatMessagesDto } from './dto/get-chat-messages.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -105,16 +105,75 @@ export class ChatApiGatewayService {
         type: schema.chat.type,
         senderId: schema.chat.senderId,
         message: schema.chat.message,
+        gameSessionId: schema.chat.gameSessionId,
+        imageUrl: schema.chat.imageUrl,
         createdAt: schema.chat.createdAt,
         readAt: schema.chat.readAt,
+        conversationId: schema.chat.conversationId,
+        gameSession: schema.gameSessions,
       })
       .from(schema.chat)
       .where(eq(schema.chat.conversationId, dto.conversationId))
+      .leftJoin(
+        schema.gameSessions,
+        eq(schema.chat.gameSessionId, schema.gameSessions.id),
+      )
       .orderBy(asc(schema.chat.createdAt))
-      .offset(dto.offset)
-      .limit(dto.limit);
+      .offset(dto.offset);
+    // .limit(dto.limit);
 
-    return { isSuccess: true, data: { messages } };
+    const gameSessionIds = [
+      ...new Set(
+        messages
+          .map((msg) => msg.gameSessionId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+
+    const gameSessionParticipants = await this.db
+      .select({
+        gameSessionId: schema.gameParticipants.gameSessionId,
+        participantId: schema.gameParticipants.participantId,
+        score: schema.gameParticipants.score,
+        result: schema.gameParticipants.result,
+        gameToken: schema.gameParticipants.gameToken,
+        createdAt: schema.gameParticipants.createdAt,
+      })
+      .from(schema.gameParticipants)
+      .where(inArray(schema.gameParticipants.gameSessionId, gameSessionIds));
+
+    const participantsMap = new Map<string, typeof gameSessionParticipants>();
+
+    for (const gameSessionParticipant of gameSessionParticipants) {
+      const current =
+        participantsMap.get(gameSessionParticipant.gameSessionId) || [];
+      if (gameSessionParticipant.participantId !== userId) {
+        gameSessionParticipant.gameToken = '';
+      }
+      current.push(gameSessionParticipant);
+      participantsMap.set(gameSessionParticipant.gameSessionId, current);
+    }
+
+    const messagesWithGameSessionAndParticipants = messages.map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ conversationId, ...msg }) => {
+        if (msg.gameSessionId && msg.gameSession) {
+          return {
+            ...msg,
+            gameSession: {
+              ...msg.gameSession,
+              participants: participantsMap.get(msg.gameSessionId) || [],
+            },
+          };
+        }
+        return msg;
+      },
+    );
+
+    return {
+      isSuccess: true,
+      data: { messages: messagesWithGameSessionAndParticipants },
+    };
   }
 
   async createPersonalConversation(userId: string, dto: CreateConversationDto) {

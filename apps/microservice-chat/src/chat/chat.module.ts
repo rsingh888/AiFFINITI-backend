@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { DrizzleModule } from 'schema/drizzle.module';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ChattingSocketService } from './chatting-socket.service';
+import { GameModule } from '../games/games.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ChattingSocketService } from './chatting-socket.service';
         },
       },
     ]), // Add other microservices here
+    GameModule,
   ],
   providers: [ChatGateway, ChattingSocketService],
 })

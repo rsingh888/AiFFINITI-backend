@@ -75,7 +75,9 @@ export const chat = pgTable('chat', {
     .notNull()
     .references(() => user.id),
   message: text('message'),
-  gameSessionId: uuid('game_id').references(() => gameSessions.id),
+  gameSessionId: uuid('game_session_id').references(() => gameSessions.id, {
+    onDelete: 'set null',
+  }),
   imageUrl: text('image_url'),
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
   readAt: timestamp('read_at', { mode: 'date' }),

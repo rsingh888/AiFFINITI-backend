@@ -729,6 +729,9 @@ export class AuthService {
           loginFormCheckPoint: 'VIDEO_DONE',
         })
         .where(eq(schema.user.id, userId));
+      return {
+        videoUrl: videoUrl,
+      };
     }
   }
 

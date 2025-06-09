@@ -230,7 +230,7 @@ export class AuthApiGatewayService {
         gender: string;
         distancePreferredInKm: number;
         photos: string[];
-      }>({ cmd: 'get-user-details' }, userId),
+      }>({ cmd: 'get-user-details' }, { userId }),
     );
   }
 }

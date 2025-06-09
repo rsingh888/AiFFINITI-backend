@@ -18,4 +18,5 @@ export const userInfo = pgTable('user-info', {
   gender: varchar('gender', { length: 50 }),
   genderPreference: varchar('gender-preference', { length: 50 }),
   distancePreferredInKm: integer('distance-preferred-in-km'),
+  candidateId: varchar('candidate-id', { length: 255 }),
 });

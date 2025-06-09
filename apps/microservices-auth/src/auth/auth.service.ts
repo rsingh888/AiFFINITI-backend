@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
 import { inArray } from 'drizzle-orm';
@@ -6,14 +7,30 @@ import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 
+interface imageResponse {
+  imageBase64: string;
+}
+interface EnrollResponse {
+  Success: boolean;
+  Message?: string;
+  Candidate?: { Person?: { Id?: string } };
+}
 @Injectable()
 export class AuthService {
   constructor(
     private configService: ConfigService,
+    private readonly httpService: HttpService,
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
+
+  get biopassKey(): string {
+    return this.configService.get<string>('BIOPASS_API_KEY') || '';
+  }
+  get biopassApiUrl(): string {
+    return this.configService.get<string>('BIOPASS_API_URL') || '';
+  }
 
   // Testing purpose
 
@@ -452,7 +469,182 @@ export class AuthService {
     }
   }
 
-  // photos Update
+  // KYC Update
+  private async getLivenessImage(sessionId: string) {
+    try {
+      const res = await this.httpService
+        .get(`${this.biopassApiUrl}/liveness/session/${sessionId}`, {
+          headers: {
+            'BIOPASS-API-KEY': this.biopassKey,
+          },
+        })
+        .toPromise();
+
+      if (!res) {
+        throw new Error('No response received from liveness session API');
+      }
+
+      return res.data as imageResponse;
+    } catch (err) {
+      if (err instanceof Error) {
+        throw new Error(`Failed to get liveness image: ${err.message}`);
+      } else {
+        throw new Error('Failed to get liveness image: Unknown error');
+      }
+    }
+  }
+
+  private async enrollUserInBioPass(
+    userId: string,
+    fileName: string,
+    base64: string,
+  ): Promise<EnrollResponse> {
+    const payload = {
+      Candidate: {
+        GalleryNames: ['your-gallery'],
+        CustomId: userId,
+        EnrollWithDeduplication: true,
+        BiographicData: {
+          Nome: 'FromDBOrForm',
+          Cpf: '123.456.789-00',
+          DataDeNascimento: '1990-01-01',
+          NomeDaMae: 'Mother',
+          NomeDoPai: 'Father',
+          Gender: 'Male',
+          Signature: {
+            ImageFileName: '',
+            ImageBase64: '',
+          },
+          CaptureDateUtc: new Date().toISOString().split('T')[0],
+        },
+        Face: {
+          Face: [
+            {
+              ImageFileName: fileName,
+              ImageBase64: base64,
+              HorzResolution: 300,
+              VertResolution: 300,
+            },
+          ],
+        },
+      },
+      PriorityOrder: 0,
+      DelayOrder: 0,
+    };
+
+    const res = await this.httpService
+      .post(`${this.biopassApiUrl}/enroll/create`, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'BIOPASS-API-KEY': this.biopassKey,
+        },
+      })
+      .toPromise();
+
+    if (!res) {
+      throw new Error('No response received from BioPass API');
+    }
+    return res.data as EnrollResponse;
+  }
+
+  async updateKyc(userId: string, data: { sessionId: string }) {
+    try {
+      const { sessionId } = data;
+
+      const livenessImage = (await this.getLivenessImage(sessionId)) as {
+        imageBase64: string;
+      };
+      const imageBase64 = livenessImage.imageBase64;
+      const fileName = 'liveness_face.png';
+
+      const enrollmentRes = await this.enrollUserInBioPass(
+        userId,
+        fileName,
+        imageBase64,
+      );
+
+      if (!enrollmentRes.Success) {
+        throw new Error('Enrollment failed: ' + enrollmentRes.Message);
+      }
+
+      const candidateId = enrollmentRes.Candidate?.Person?.Id;
+      if (!candidateId) {
+        throw new Error('Candidate ID missing in enrollment response');
+      }
+
+      await this.db
+        .update(schema.userInfo)
+        .set({ candidateId })
+        .where(eq(schema.userInfo.userId, userId));
+
+      await this.db
+        .update(schema.user)
+        .set({ loginFormCheckPoint: 'KYC_DONE' })
+        .where(eq(schema.user.id, userId));
+
+      return {
+        success: true,
+        message: 'User enrolled successfully in BioPass ABIS',
+        candidateId,
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      throw new Error(`KYC update failed: ${errorMessage}`);
+    }
+  }
+
+  // photos Update  and Verify Photos
+
+  async verifyPhotos(userId: string, data: { photos: string[] }) {
+    try {
+      const { photos } = data;
+
+      if (!photos) {
+        throw new Error('Minimum 1 photos are required for verification');
+      }
+
+      const userInfo = await this.db
+        .select()
+        .from(schema.userInfo)
+        .where(eq(schema.userInfo.userId, userId))
+        .limit(1);
+
+      if (userInfo.length === 0 || !userInfo[0].candidateId) {
+        throw new Error('Candidate ID not found for user');
+      }
+
+      const candidateId = userInfo[0].candidateId;
+
+      for (const photoBase64 of photos) {
+        const verifyPayload = {
+          CandidateId: candidateId,
+          ImageBase64: photoBase64,
+        };
+
+        const verifyRes = await this.httpService
+          .post<{ MatchSuccess: boolean }>(
+            `${this.biopassApiUrl}/face/verify/1to1`,
+            verifyPayload,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'BIOPASS-API-KEY': this.biopassKey,
+              },
+            },
+          )
+          .toPromise();
+
+        if (!verifyRes?.data?.MatchSuccess) {
+          throw new Error('Face verification failed for one or more photos');
+        }
+      }
+
+      return { success: true, message: 'All photos verified successfully' };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      throw new Error(`Photo verification failed: ${errorMessage}`);
+    }
+  }
 
   async updatePhotos(
     userId: string,
@@ -502,7 +694,43 @@ export class AuthService {
     }
   }
 
-  // Video Generation using AI will be integrated later
+  // Best Image selection and Video Generation using AI will be integrated later
+
+  async getVideo(userId: string) {
+    const existingMedia = await this.db
+      .select()
+      .from(schema.userMedia)
+      .where(eq(schema.userMedia.userId, userId));
+
+    // Ideally first fetch the all four images from user db
+
+    const userPhotos = existingMedia[0].photos;
+
+    if (!userPhotos) {
+      throw new Error('Minimum 1 image required');
+    }
+
+    // select the best image using google vision
+
+    // make a video on that image using API
+
+    const videoUrl =
+      'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';
+
+    if (existingMedia.length != 0) {
+      await this.db.insert(schema.userMedia).values({
+        userId,
+        videos: [videoUrl],
+      });
+
+      await this.db
+        .update(schema.user)
+        .set({
+          loginFormCheckPoint: 'VIDEO_DONE',
+        })
+        .where(eq(schema.user.id, userId));
+    }
+  }
 
   // ----------------------------------------- GET ENDPOINTS ------------------
 

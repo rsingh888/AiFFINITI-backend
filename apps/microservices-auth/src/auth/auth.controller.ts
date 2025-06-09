@@ -9,6 +9,7 @@ import { UpdateUserDistancePreferredInKmDto } from './dto/update-user-distance-p
 import { UpdateUserPhotosDto } from './dto/update-user-photos.dto';
 import { UpdateUserGenderPreferenceDto } from './dto/update-user-gender-preference.dto';
 import { User } from '@supabase/supabase-js';
+import { UpdateUserKycDto } from './dto/update-user-kyc.dto';
 
 @Controller()
 export class AuthController {
@@ -91,6 +92,18 @@ export class AuthController {
     );
   }
 
+  @MessagePattern({ cmd: 'update-user-kyc' })
+  async updateUserKyc(payload: { userId: string; data: UpdateUserKycDto }) {
+    return this.authService.updateKyc(payload.userId, payload.data);
+  }
+
+  @MessagePattern({ cmd: 'verify-user-photos' })
+  async verifyUserPhotos(payload: {
+    userId: string;
+    data: UpdateUserPhotosDto;
+  }) {
+    return this.authService.verifyPhotos(payload.userId, payload.data);
+  }
   @MessagePattern({ cmd: 'update-user-photos' })
   async updateUserPhotos(payload: {
     userId: string;
@@ -99,10 +112,15 @@ export class AuthController {
     return this.authService.updatePhotos(payload.userId, payload.data);
   }
 
+  @MessagePattern({ cmd: 'get-user-video' })
+  async getVideo(payload: { userId: string }) {
+    return this.authService.getVideo(payload.userId);
+  }
+
   // ---------------------------------GET USER DETAILS----------------------------------------------------
 
   @MessagePattern({ cmd: 'get-user-details' })
-  getDetails(userId: string) {
-    return this.authService.getDetails(userId);
+  getDetails(payload: { userId: string }) {
+    return this.authService.getDetails(payload.userId);
   }
 }

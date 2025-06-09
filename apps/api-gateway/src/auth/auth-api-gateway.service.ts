@@ -159,6 +159,31 @@ export class AuthApiGatewayService {
     return status;
   }
 
+  async postUpdateKyc(userId: string, data: { sessionId: string }) {
+    const { sessionId } = data;
+    const status = await firstValueFrom(
+      this.authService.send<string>(
+        { cmd: 'update-user-kyc' },
+        { userId, data: { sessionId } },
+      ),
+    );
+
+    return status;
+  }
+
+  async postVerifyPhotos(userId: string, data: { photos: string[] }) {
+    const { photos } = data;
+
+    const status: string = await firstValueFrom(
+      this.authService.send<string>(
+        { cmd: 'verify-user-photos' },
+        { userId, data: { photos } },
+      ),
+    );
+
+    return status;
+  }
+
   async postUpdatePhotos(userId: string, data: { photos: string[] }) {
     const { photos } = data;
 
@@ -175,6 +200,12 @@ export class AuthApiGatewayService {
     );
 
     return status;
+  }
+
+  async userVideo(userId: string): Promise<string> {
+    return firstValueFrom(
+      this.authService.send<string>({ cmd: 'get-user-video' }, { userId }),
+    );
   }
 
   // -----------------------GET REquest-------------------

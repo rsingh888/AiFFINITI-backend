@@ -128,7 +128,7 @@ export class AuthService {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`OAuth Sign-In failed: ${message}`);
+      throw new Error(`❌ OAuth Sign-In failed: ${message}`);
     }
   }
 

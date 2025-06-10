@@ -16,6 +16,7 @@
     "build:auth": "nest build microservices-auth",
     "build:misc": "nest build microservices-misc",
     "build:chat": "nest build microservice-chat",
+    "build:all": "npm run build:api_gateway && npm run build:auth && npm run build:misc && npm run build:chat",
     "start:prod_api_gateway": "node dist/apps/api-gateway/main",
     "start:prod_auth": "node dist/apps/microservices-auth/main",
     "start:prod_misc": "node dist/apps/microservices-misc/main",

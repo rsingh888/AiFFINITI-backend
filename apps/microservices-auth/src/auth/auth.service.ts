@@ -898,7 +898,7 @@ export class AuthService {
       await this.db
         .update(schema.userMedia)
         .set({
-          preferredMedia: [mediaPreference],
+          preferredMedia: [mediaUrl],
         })
         .where(eq(schema.userMedia.userId, userId));
 

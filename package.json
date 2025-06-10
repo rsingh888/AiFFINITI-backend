@@ -6,11 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "start:dev": "nest start --watch",
     "start:dev_api_gateway": "nest start --watch",
     "start:dev_auth": "nest start microservices-auth --watch",
     "start:dev_misc": "nest start microservices-misc --watch",
     "start:dev_chat": "nest start microservice-chat --watch",
+    "start:dev_all": "concurrently -n gateway,auth,misc,chat -c bgMagenta,bgYellow,bgWhite,bgCyan \"npm run start:dev_api_gateway\" \"npm run start:dev_auth\" \"npm run start:dev_misc\" \"npm run start:dev_chat\"",
     "build": "nest build",
     "build:api_gateway": "nest build",
     "build:auth": "nest build microservices-auth",
@@ -32,6 +32,7 @@
     "drizzle:push_database": "npx drizzle-kit push"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -41,8 +42,10 @@
     "@nestjs/websockets": "^11.1.2",
     "@socket.io/redis-adapter": "^8.3.0",
     "@supabase/supabase-js": "^2.49.4",
+    "axios": "^1.9.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "concurrently": "^9.1.2",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.43.1",

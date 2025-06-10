@@ -578,6 +578,7 @@ export class AuthService {
     ]);
 
     return {
+      id: userRow[0].id,
       email: userRow[0].email,
       intro: intro[0] ?? null,
       location: location[0] ?? null,

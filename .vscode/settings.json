@@ -1,6 +1,10 @@
 {
     "cSpell.words": [
         "Atleast",
+        "sadd",
+        "scard",
+        "smembers",
+        "srem",
         "Supabase"
     ]
 }

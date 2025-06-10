@@ -4,7 +4,6 @@ import {
   ValidateNested,
   IsString,
   ValidateIf,
-  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ChatMessageType, ChatMessageTypeTypes } from 'schema/chatting_schemas';
@@ -14,28 +13,26 @@ class TextChatMessageDto {
   message: string;
 }
 
-const CHAT_MESSAGE_TYPES = { TEXT: 'text' } as const;
-
-type ChatMessageType =
-  (typeof CHAT_MESSAGE_TYPES)[keyof typeof CHAT_MESSAGE_TYPES];
+type ChatMessageTypeArr =
+  (typeof ChatMessageType)[keyof typeof ChatMessageType];
 
 class ChatMessageDto {
-  @IsIn(Object.values(CHAT_MESSAGE_TYPES))
-  type: ChatMessageType;
+  @IsIn(Object.values(ChatMessageType))
+  type: ChatMessageTypeArr;
 
-  @ValidateIf((o: { type: string }) => o.type === CHAT_MESSAGE_TYPES.TEXT)
+  @ValidateIf((o: { type: string }) => o.type === ChatMessageType.TEXT)
   @IsOptional()
   @ValidateNested()
   @Type(() => TextChatMessageDto)
   textMessageData?: TextChatMessageDto;
 }
 
-class GameRequestDto {
+class GameDto {
   @IsString()
-  gameId: string;
+  type: 'request' | 'accept' | 'reject';
 
-  @IsUUID()
-  conversationId: string;
+  @IsString()
+  gameId?: string;
 }
 
 export class SendP2PMessageDto {
@@ -51,11 +48,9 @@ export class SendP2PMessageDto {
   @Type(() => ChatMessageDto)
   p2pChatData?: ChatMessageDto;
 
-  @ValidateIf(
-    (o: { type: string }) => o.type === ChatMessageType.GAME_REQUESTED,
-  )
+  @ValidateIf((o: { type: string }) => o.type === ChatMessageType.GAME)
   @IsOptional()
   @ValidateNested()
-  @Type(() => GameRequestDto)
-  p2pGameRequest?: GameRequestDto;
+  @Type(() => GameDto)
+  p2pGameData?: GameDto;
 }

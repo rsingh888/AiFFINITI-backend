@@ -5,6 +5,7 @@
         "scard",
         "smembers",
         "srem",
+        "BIOPASS",
         "Supabase"
     ]
 }

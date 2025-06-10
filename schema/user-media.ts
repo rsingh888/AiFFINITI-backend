@@ -7,4 +7,5 @@ export const userMedia = pgTable('user-media', {
     .references(() => user.id, { onDelete: 'cascade' }),
   photos: jsonb('photos').$type<string[]>(),
   videos: jsonb('videos').$type<string[]>(),
+  preferredMedia: jsonb('preferred-media').$type<string[]>(),
 });

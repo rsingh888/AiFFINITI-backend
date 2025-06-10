@@ -1,19 +1,36 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
 import { inArray } from 'drizzle-orm';
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 
+// interface imageResponse {
+//   imageBase64: string;
+// }
+// interface EnrollResponse {
+//   Success: boolean;
+//   Message?: string;
+//   Candidate?: { Person?: { Id?: string } };
+// }
 @Injectable()
 export class AuthService {
   constructor(
     private configService: ConfigService,
+    private readonly httpService: HttpService,
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
+
+  get biopassKey(): string {
+    return this.configService.get<string>('BIOPASS_API_KEY') || '';
+  }
+  get biopassApiUrl(): string {
+    return this.configService.get<string>('BIOPASS_API_URL') || '';
+  }
 
   // Testing purpose
 
@@ -24,27 +41,27 @@ export class AuthService {
 
   // for granting new access token to user
 
-  async refreshSupabaseSession(refreshToken: string) {
-    const client = createClient(
-      this.configService.get<string>('SUPABASE_URL') || '',
-      this.configService.get<string>('SUPABASE_KEY') || '',
-    );
+  // async refreshSupabaseSession(refreshToken: string) {
+  //   const client = createClient(
+  //     this.configService.get<string>('SUPABASE_URL') || '',
+  //     this.configService.get<string>('SUPABASE_KEY') || '',
+  //   );
 
-    const { data, error } = await client.auth.refreshSession({
-      refresh_token: refreshToken,
-    });
+  //   const { data, error } = await client.auth.refreshSession({
+  //     refresh_token: refreshToken,
+  //   });
 
-    if (error || !data.session?.access_token) {
-      throw new Error('Failed to refresh token');
-    }
+  //   if (error || !data.session?.access_token) {
+  //     throw new Error('Failed to refresh token');
+  //   }
 
-    return {
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token,
-      expiresIn: data.session.expires_in,
-      user: data.session.user,
-    };
-  }
+  //   return {
+  //     accessToken: data.session.access_token,
+  //     refreshToken: data.session.refresh_token,
+  //     expiresIn: data.session.expires_in,
+  //     user: data.session.user,
+  //   };
+  // }
 
   // For Guard
   async verifyToken(accessToken: string) {
@@ -55,76 +72,97 @@ export class AuthService {
     return { ...data.user };
   }
 
-  // Private user id token
+  // Helper to fetch user by ID
+  private async getUserById(userId: string) {
+    const user = await this.db
+      .select()
+      .from(schema.user)
+      .where(eq(schema.user.id, userId));
+    return user[0];
+  }
 
-  // private async getUserIdFromToken(token: string): Promise<string> {
-  //   const { data: session, error } = await this.supabase.auth.getUser(token);
-  //   if (error || !session?.user) throw new Error('Invalid token');
+  // Helper to fetch userInfo by userId
+  private async getUserInfo(userId: string) {
+    const info = await this.db
+      .select()
+      .from(schema.userInfo)
+      .where(eq(schema.userInfo.userId, userId));
+    return info[0];
+  }
 
-  //   const user: User = session.user;
-  //   const email = user.email;
+  // Helper to update checkpoint
+  private async updateCheckpoint(userId: string, checkPoint: string) {
+    await this.db
+      .update(schema.user)
+      .set({ loginFormCheckPoint: checkPoint })
+      .where(eq(schema.user.id, userId));
+  }
 
-  //   if (!email) {
-  //     throw new Error('User email is missing');
-  //   }
+  private async getUserLocation(userId: string) {
+    const loc = await this.db
+      .select()
+      .from(schema.userLocation)
+      .where(eq(schema.userLocation.userId, userId));
+    return loc[0];
+  }
 
-  //   const result = await this.db
-  //     .select()
-  //     .from(schema.user)
-  //     .where(eq(schema.user.email, email));
+  private async getUserInterests(userId: string) {
+    return await this.db
+      .select()
+      .from(schema.userInterestMapping)
+      .where(eq(schema.userInterestMapping.userId, userId));
+  }
 
-  //   if (result.length === 0) throw new Error('User not found');
-  //   return result[0].id; // Now gives ---> Supabase user id
-  // }
+  private async getUserMedia(userId: string) {
+    const media = await this.db
+      .select()
+      .from(schema.userMedia)
+      .where(eq(schema.userMedia.userId, userId));
+    return media[0];
+  }
 
-  // Sign In with Oauth
-
+  // SOCIAL LOGIN
   async socialLogin(user: User) {
     try {
-      const validUser = user;
-      const userEmail = validUser.email;
-      const userMetadata = validUser.user_metadata ?? {};
-      const userProvider = validUser.app_metadata?.provider as
-        | 'google'
-        | 'facebook';
+      const { email: userEmail, user_metadata, app_metadata } = user;
+      const provider = app_metadata?.provider as 'google' | 'facebook';
 
-      if (!userEmail) {
-        throw new Error('Email is missing from Supabase user');
-      }
+      if (!userEmail) throw new Error('Email is missing from Supabase user');
+      if (!provider) throw new Error('Auth provider is not specified');
 
-      if (!userProvider) {
-        throw new Error('Auth provider is not specified');
-      }
+      const isEmailVerified = Boolean(user_metadata?.email_verified);
 
-      const isEmailVerified = Boolean(userMetadata.email_verified);
-
-      const existingUser = await this.db
+      const existing = await this.db
         .select()
         .from(schema.user)
         .where(eq(schema.user.email, userEmail));
 
-      if (existingUser.length != 0) {
+      if (existing.length > 0) {
         return {
-          success: true,
-          message: 'User already exist',
+          isSuccess: true,
+          message: 'User already exists',
           userDetail: {
             email: userEmail,
-            loginCheckPoint: existingUser[0].loginFormCheckPoint,
+            loginCheckPoint: existing[0].loginFormCheckPoint,
           },
         };
       }
 
       await this.db.insert(schema.user).values({
-        id: validUser.id,
+        id: user.id,
         email: userEmail,
         isEmailVerified,
-        authProvider: userProvider,
+        authProvider: provider,
         loginFormCheckPoint: 'STARTED',
       });
 
       return {
-        success: true,
+        isSuccess: true,
         message: 'User Added to DB',
+        data: {
+          checkPoint: 'STARTED',
+          user,
+        },
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -132,71 +170,73 @@ export class AuthService {
     }
   }
 
-  // NickName and Date of Birth Update
-
+  // NICKNAME + DOB
   async updateNickNameDOB(
     userId: string,
-    data: {
-      nickName: string;
-      dateOfBirth: Date;
-    },
+    data: { nickName: string; dateOfBirth: Date },
   ) {
     try {
       const { nickName, dateOfBirth } = data;
 
-      if (!nickName || !dateOfBirth) {
+      if (!nickName || !dateOfBirth)
         throw new Error('Nick Name and Date of Birth are required');
-      }
 
-      const parsedDateOfBirth = new Date(dateOfBirth);
+      const parsedDate = new Date(dateOfBirth);
+      const userInfo = await this.getUserInfo(userId);
 
-      const existingUserInfo = await this.db
-        .select()
-        .from(schema.userInfo)
-        .where(eq(schema.userInfo.userId, userId));
-
-      if (existingUserInfo.length === 0) {
+      if (!userInfo) {
         await this.db.insert(schema.userInfo).values({
           userId,
           nickName,
-          dateOfBirth: parsedDateOfBirth,
+          dateOfBirth: parsedDate,
         });
-        await this.db
-          .update(schema.user)
-          .set({ loginFormCheckPoint: 'INTRO_DONE' })
-          .where(eq(schema.user.id, userId));
-      } else {
-        await this.db
-          .update(schema.userInfo)
-          .set({
-            nickName,
-            dateOfBirth: parsedDateOfBirth,
-          })
-          .where(eq(schema.userInfo.userId, userId));
-
+        await this.updateCheckpoint(userId, 'INTRO_DONE');
         return {
-          success: true,
-          message: 'User Info updated successfully',
+          isSuccess: true,
+          message: 'User Info Added successfully',
+          data: { checkPoint: 'INTRO_DONE', nickName, dateOfBirth },
         };
       }
 
-      return { success: true, message: 'User Info Added successfully' };
+      await this.db
+        .update(schema.userInfo)
+        .set({ nickName, dateOfBirth: parsedDate })
+        .where(eq(schema.userInfo.userId, userId));
+
+      const user = await this.getUserById(userId);
+      return {
+        isSuccess: true,
+        message: 'User Info updated successfully',
+        data: {
+          checkPoint: user.loginFormCheckPoint,
+          nickName,
+          dateOfBirth,
+        },
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to update user info: ${message}`);
     }
   }
 
-  // Interests Update
-
+  // INTERESTS
   async updateInterest(userId: string, data: { interests: string[] }) {
     const { interests } = data;
 
+    if (!interests.every((interest) => schema.allInterest.includes(interest))) {
+      throw new Error('Invalid interest(s)');
+    }
+    const user = await this.getUserById(userId);
+    if (!user) throw new Error('User does not exist');
+
+    const userInfo = await this.getUserInfo(userId);
+    if (!userInfo?.nickName || !userInfo?.dateOfBirth) {
+      throw new Error('First fill nickname and date of birth');
+    }
+
     return await this.db.transaction(async (trx) => {
       const userMapped = await trx
-        .select({
-          name: schema.userInterests.name,
-        })
+        .select({ name: schema.userInterests.name })
         .from(schema.userInterestMapping)
         .innerJoin(
           schema.userInterests,
@@ -217,7 +257,6 @@ export class AuthService {
         .where(inArray(schema.userInterests.name, newInterestNames));
 
       const existingNames = existingInterests.map((i) => i.name);
-
       const interestsToCreate = newInterestNames.filter(
         (name) => !existingNames.includes(name),
       );
@@ -227,7 +266,6 @@ export class AuthService {
           .insert(schema.userInterests)
           .values(interestsToCreate.map((name) => ({ name })))
           .returning();
-
         existingInterests.push(...inserted);
       }
 
@@ -245,18 +283,23 @@ export class AuthService {
       }
 
       if (isFirstTime) {
-        await trx
-          .update(schema.user)
-          .set({
-            loginFormCheckPoint: 'INTEREST_DONE',
-          })
-          .where(eq(schema.user.id, userId));
+        await this.updateCheckpoint(userId, 'INTEREST_DONE');
+        return {
+          isSuccess: true,
+          message: 'Interests Added Successfully',
+          data: {
+            checkPoint: 'INTEREST_DONE',
+            interest: newInterestNames,
+          },
+        };
       }
 
       return {
-        success: true,
-        message: 'Interests updated successfully',
-        newlyAdded: newInterestNames,
+        isSuccess: true,
+        message: 'Interests Updated successfully',
+        data: {
+          checkPoint: user.loginFormCheckPoint,
+        },
       };
     });
   }
@@ -270,36 +313,48 @@ export class AuthService {
     try {
       const { location } = data;
 
-      const existingLocation = await this.db
-        .select()
-        .from(schema.userLocation)
-        .where(eq(schema.userLocation.userId, userId));
+      const user = await this.getUserById(userId);
+      if (!user) throw new Error('User not found');
 
-      if (existingLocation.length === 0) {
-        await this.db.insert(schema.userLocation).values({
-          userId,
-          longitude: location.longitude,
-          latitude: location.latitude,
-        });
-
-        await this.db
-          .update(schema.user)
-          .set({ loginFormCheckPoint: 'LOCATION_DONE' })
-          .where(eq(schema.user.id, userId));
-      } else {
-        await this.db
-          .update(schema.userLocation)
-          .set({
-            longitude: location.longitude,
-            latitude: location.latitude,
-          })
-          .where(eq(schema.userLocation.userId, userId));
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      if (
+        !userInfo?.nickName ||
+        !userInfo?.dateOfBirth ||
+        interests.length === 0
+      ) {
+        throw new Error('First fill nickname, date of birth, and interests');
       }
 
-      return { success: true, message: 'Location updated successfully' };
+      const existingLocation = await this.getUserLocation(userId);
+      const isFirstTime = !existingLocation;
+
+      if (isFirstTime) {
+        await this.db
+          .insert(schema.userLocation)
+          .values({ userId, ...location });
+        await this.updateCheckpoint(userId, 'LOCATION_DONE');
+        return {
+          isSuccess: true,
+          message: 'Location added successfully',
+          data: { checkPoint: 'LOCATION_DONE', location },
+        };
+      }
+
+      await this.db
+        .update(schema.userLocation)
+        .set(location)
+        .where(eq(schema.userLocation.userId, userId));
+
+      return {
+        isSuccess: true,
+        message: 'Location updated successfully',
+        data: { checkPoint: user.loginFormCheckPoint, location },
+      };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update location: ${errorMessage}`);
+      throw new Error(
+        `Failed to update location: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -309,43 +364,51 @@ export class AuthService {
     try {
       const { gender } = data;
 
-      const validGenders: ('Male' | 'Female')[] = ['Male', 'Female'];
-      if (!validGenders.includes(gender as 'Male' | 'Female')) {
-        throw new Error('Invalid gender. Must be "Male" or "Female"');
+      if (!schema.genderType.includes(gender)) {
+        throw new Error('Invalid gender');
       }
 
-      const existingUserInfo = await this.db
-        .select()
-        .from(schema.userInfo)
+      const user = await this.getUserById(userId);
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      const location = await this.getUserLocation(userId);
+
+      if (
+        !userInfo?.nickName ||
+        !userInfo?.dateOfBirth ||
+        interests.length === 0 ||
+        !location
+      ) {
+        throw new Error(
+          'First fill nickname, date of birth, interests, and location',
+        );
+      }
+
+      const isFirstTime = !userInfo.gender;
+
+      await this.db
+        .update(schema.userInfo)
+        .set({ gender })
         .where(eq(schema.userInfo.userId, userId));
 
-      if (existingUserInfo.length === 0) {
-        throw new Error('User info not found');
+      if (isFirstTime) {
+        await this.updateCheckpoint(userId, 'GENDER_DONE');
+        return {
+          isSuccess: true,
+          message: 'Gender added successfully',
+          data: { checkPoint: 'GENDER_DONE', gender },
+        };
       }
 
-      const isFirstTime = !existingUserInfo[0].gender; // true if gender is empty or null
-
-      if (isFirstTime === true) {
-        await this.db
-          .update(schema.userInfo)
-          .set({ gender: gender as 'Male' | 'Female' })
-          .where(eq(schema.userInfo.userId, userId));
-
-        await this.db
-          .update(schema.user)
-          .set({ loginFormCheckPoint: 'GENDER_DONE' })
-          .where(eq(schema.user.id, userId));
-      } else {
-        await this.db
-          .update(schema.userInfo)
-          .set({ gender: gender as 'Male' | 'Female' })
-          .where(eq(schema.userInfo.userId, userId));
-      }
-
-      return { success: true, message: 'Gender updated successfully' };
+      return {
+        isSuccess: true,
+        message: 'Gender updated successfully',
+        data: { checkPoint: user.loginFormCheckPoint, gender },
+      };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update gender: ${errorMessage}`);
+      throw new Error(
+        `Failed to update gender: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -357,51 +420,52 @@ export class AuthService {
     try {
       const { genderPreference } = data;
 
-      const validGenders: ('Male' | 'Female' | 'Both')[] = [
-        'Male',
-        'Female',
-        'Both',
-      ];
+      if (!schema.genderType.includes(genderPreference)) {
+        throw new Error('Invalid gender preference');
+      }
+
+      const user = await this.getUserById(userId);
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      const location = await this.getUserLocation(userId);
+
       if (
-        !validGenders.includes(genderPreference as 'Male' | 'Female' | 'Both')
+        !userInfo?.nickName ||
+        !userInfo?.dateOfBirth ||
+        !userInfo.gender ||
+        interests.length === 0 ||
+        !location
       ) {
         throw new Error(
-          'Invalid gender preference. Must be "Male" or "Female" or "Both',
+          'First fill nickname, date of birth, gender, interests, and location',
         );
       }
 
-      const existingUserInfo = await this.db
-        .select()
-        .from(schema.userInfo)
-        .where(eq(schema.userInfo.userId, userId));
-
-      if (existingUserInfo.length === 0) {
-        throw new Error('User info not found');
-      }
-
-      const isFirstTime = !existingUserInfo[0].genderPreference; // true if gender preference is empty or null
+      const isFirstTime = !userInfo.genderPreference;
 
       await this.db
         .update(schema.userInfo)
-        .set({
-          genderPreference: genderPreference as 'Male' | 'Female' | 'Both',
-        })
+        .set({ genderPreference })
         .where(eq(schema.userInfo.userId, userId));
 
-      if (isFirstTime === true) {
-        await this.db
-          .update(schema.user)
-          .set({ loginFormCheckPoint: 'GENDER_PREFERENCE_DONE' })
-          .where(eq(schema.user.id, userId));
+      if (isFirstTime) {
+        await this.updateCheckpoint(userId, 'GENDER_PREFERENCE_DONE');
+        return {
+          isSuccess: true,
+          message: 'Gender preference added successfully',
+          data: { checkPoint: 'GENDER_PREFERENCE_DONE', genderPreference },
+        };
       }
 
       return {
-        success: true,
+        isSuccess: true,
         message: 'Gender preference updated successfully',
+        data: { checkPoint: user.loginFormCheckPoint, genderPreference },
       };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update gender: ${errorMessage}`);
+      throw new Error(
+        `Failed to update gender preference: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -414,45 +478,275 @@ export class AuthService {
     try {
       const { distancePreferredInKm } = data;
 
+      if (distancePreferredInKm == null || distancePreferredInKm < 0) {
+        throw new Error('Distance must be a non-negative number');
+      }
+
+      const user = await this.getUserById(userId);
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      const location = await this.getUserLocation(userId);
+
       if (
-        distancePreferredInKm === undefined ||
-        distancePreferredInKm === null
+        !userInfo?.nickName ||
+        !userInfo?.dateOfBirth ||
+        !userInfo?.gender ||
+        !userInfo?.genderPreference ||
+        interests.length === 0 ||
+        !location
       ) {
-        throw new Error('distancePreferredInKm must be provided');
+        throw new Error(
+          'First fill nickname, date of birth, gender, gender preference, interests, and location',
+        );
       }
 
-      if (distancePreferredInKm < 0) {
-        throw new Error('Distance cannot be negative');
-      }
-
-      const existingUserInfo = await this.db
-        .select()
-        .from(schema.userInfo)
-        .where(eq(schema.userInfo.userId, userId))
-        .limit(1);
-
-      if (existingUserInfo.length === 0) {
-        throw new Error('User info not found');
-      }
+      const isFirstTime = !userInfo.distancePreferredInKm;
 
       await this.db
         .update(schema.userInfo)
         .set({ distancePreferredInKm })
         .where(eq(schema.userInfo.userId, userId));
 
-      await this.db
-        .update(schema.user)
-        .set({ loginFormCheckPoint: 'DISTANCE_PREFERRED_DONE' })
-        .where(eq(schema.user.id, userId));
+      if (isFirstTime) {
+        await this.updateCheckpoint(userId, 'DISTANCE_PREFERRED_DONE');
+        return {
+          isSuccess: true,
+          message: 'Distance preference added successfully',
+          data: {
+            checkPoint: 'DISTANCE_PREFERRED_DONE',
+            distancePreferredInKm,
+          },
+        };
+      }
 
-      return { success: true, message: 'Distance updated successfully' };
+      return {
+        isSuccess: true,
+        message: 'Distance preference updated successfully',
+        data: { checkPoint: user.loginFormCheckPoint, distancePreferredInKm },
+      };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update distance: ${errorMessage}`);
+      throw new Error(
+        `Failed to update distance preference: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
-  // photos Update
+  // async createId(userId: string) {
+  //   const response = await this.httpService
+  //     .post<{ sessionId: string }>(
+  //       'https://api.biopassid.com/v1/liveness/session',
+  //       {
+  //         settings: {
+  //           // Optional: configure settings if needed
+  //           challengeType: 'PASSIVE', // or 'ACTIVE'
+  //           locale: 'en',
+  //         },
+  //       },
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${this.biopassKey}`,
+  //           'Content-Type': 'application/json',
+  //         },
+  //       },
+  //     )
+  //     .toPromise();
+
+  //   if (!response || !response.data || !response.data.sessionId) {
+  //     throw new Error('Failed to create liveness session or missing sessionId');
+  //   }
+
+  //   const sessionId: string = response.data.sessionId;
+  //   // const url = `https://liveness.biopassid.com/session/${sessionId}`;
+
+  //   return { sessionId }; // frontend will open this URL
+  // }
+
+  // KYC Update
+  // private async getLivenessImage(sessionId: string) {
+  //   try {
+  //     const res = await this.httpService
+  //       .get(`${this.biopassApiUrl}/liveness/session/${sessionId}`, {
+  //         headers: {
+  //           'BIOPASS-API-KEY': this.biopassKey,
+  //         },
+  //       })
+  //       .toPromise();
+
+  //     if (!res) {
+  //       throw new Error('No response received from liveness session API');
+  //     }
+
+  //     return res.data as imageResponse;
+  //   } catch (err) {
+  //     if (err instanceof Error) {
+  //       throw new Error(`Failed to get liveness image: ${err.message}`);
+  //     } else {
+  //       throw new Error('Failed to get liveness image: Unknown error');
+  //     }
+  //   }
+  // }
+
+  // private async enrollUserInBioPass(
+  //   userId: string,
+  //   fileName: string,
+  //   base64: string,
+  // ): Promise<EnrollResponse> {
+  //   const payload = {
+  //     Candidate: {
+  //       GalleryNames: ['your-gallery'],
+  //       CustomId: userId,
+  //       EnrollWithDeduplication: true,
+  //       BiographicData: {
+  //         Nome: 'FromDBOrForm',
+  //         Cpf: '123.456.789-00',
+  //         DataDeNascimento: '1990-01-01',
+  //         NomeDaMae: 'Mother',
+  //         NomeDoPai: 'Father',
+  //         Gender: 'Male',
+  //         Signature: {
+  //           ImageFileName: '',
+  //           ImageBase64: '',
+  //         },
+  //         CaptureDateUtc: new Date().toISOString().split('T')[0],
+  //       },
+  //       Face: {
+  //         Face: [
+  //           {
+  //             ImageFileName: fileName,
+  //             ImageBase64: base64,
+  //             HorzResolution: 300,
+  //             VertResolution: 300,
+  //           },
+  //         ],
+  //       },
+  //     },
+  //     PriorityOrder: 0,
+  //     DelayOrder: 0,
+  //   };
+
+  //   const res = await this.httpService
+  //     .post(`${this.biopassApiUrl}/enroll/create`, payload, {
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'BIOPASS-API-KEY': this.biopassKey,
+  //       },
+  //     })
+  //     .toPromise();
+
+  //   if (!res) {
+  //     throw new Error('No response received from BioPass API');
+  //   }
+  //   return res.data as EnrollResponse;
+  // }
+
+  async updateKyc(userId: string) {
+    try {
+      // Placeholder for actual BioPass integration
+      const candidateId = 'hf3u-fjkejrjfejk-njhjbvherbh';
+
+      const user = await this.getUserById(userId);
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      const location = await this.getUserLocation(userId);
+
+      if (!user) throw new Error('User not found');
+      if (!userInfo) throw new Error('User info not found');
+
+      const {
+        nickName,
+        dateOfBirth,
+        gender,
+        genderPreference,
+        distancePreferredInKm,
+      } = userInfo;
+
+      if (
+        !nickName ||
+        !dateOfBirth ||
+        !gender ||
+        !genderPreference ||
+        distancePreferredInKm == null ||
+        interests.length === 0 ||
+        !location
+      ) {
+        throw new Error(
+          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, and distance preference are set before proceeding with KYC.',
+        );
+      }
+
+      await this.db
+        .update(schema.userInfo)
+        .set({ candidateId })
+        .where(eq(schema.userInfo.userId, userId));
+
+      await this.updateCheckpoint(userId, 'KYC_DONE');
+
+      return {
+        isSuccess: true,
+        message: 'User KYC completed successfully',
+        data: {
+          candidateId,
+          checkPoint: 'KYC_DONE',
+        },
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      throw new Error(`KYC update failed: ${errorMessage}`);
+    }
+  }
+
+  // photos Update  and Verify Photos
+
+  // async verifyPhotos(userId: string, data: { photos: string[] }) {
+  //   try {
+  //     const { photos } = data;
+
+  //     if (!photos) {
+  //       throw new Error('Minimum 1 photos are required for verification');
+  //     }
+
+  //     const userInfo = await this.db
+  //       .select()
+  //       .from(schema.userInfo)
+  //       .where(eq(schema.userInfo.userId, userId))
+  //       .limit(1);
+
+  //     if (userInfo.length === 0 || !userInfo[0].candidateId) {
+  //       throw new Error('Candidate ID not found for user');
+  //     }
+
+  //     const candidateId = userInfo[0].candidateId;
+
+  //     for (const photoBase64 of photos) {
+  //       const verifyPayload = {
+  //         CandidateId: candidateId,
+  //         ImageBase64: photoBase64,
+  //       };
+
+  //       const verifyRes = await this.httpService
+  //         .post<{ MatchSuccess: boolean }>(
+  //           `${this.biopassApiUrl}/face/verify/1to1`,
+  //           verifyPayload,
+  //           {
+  //             headers: {
+  //               'Content-Type': 'application/json',
+  //               'BIOPASS-API-KEY': this.biopassKey,
+  //             },
+  //           },
+  //         )
+  //         .toPromise();
+
+  //       if (!verifyRes?.data?.MatchSuccess) {
+  //         throw new Error('Face verification failed for one or more photos');
+  //       }
+  //     }
+
+  //     return { success: true, message: 'All photos verified successfully' };
+  //   } catch (err) {
+  //     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+  //     throw new Error(`Photo verification failed: ${errorMessage}`);
+  //   }
+  // }
 
   async updatePhotos(
     userId: string,
@@ -462,6 +756,38 @@ export class AuthService {
   ) {
     try {
       const { photos } = data;
+
+      const user = await this.getUserById(userId);
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      const location = await this.getUserLocation(userId);
+
+      if (!user) throw new Error('User not found');
+      if (!userInfo) throw new Error('User info not found');
+
+      const {
+        nickName,
+        dateOfBirth,
+        gender,
+        genderPreference,
+        distancePreferredInKm,
+        candidateId,
+      } = userInfo;
+
+      if (
+        !nickName ||
+        !dateOfBirth ||
+        !gender ||
+        !genderPreference ||
+        !candidateId ||
+        distancePreferredInKm == null ||
+        interests.length === 0 ||
+        !location
+      ) {
+        throw new Error(
+          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, and distance preference and candidateId are set before proceeding with KYC.',
+        );
+      }
 
       const existingMedia = await this.db
         .select()
@@ -474,12 +800,16 @@ export class AuthService {
           photos: photos ?? [],
         });
 
-        await this.db
-          .update(schema.user)
-          .set({
-            loginFormCheckPoint: 'PHOTOS_DONE',
-          })
-          .where(eq(schema.user.id, userId));
+        await this.updateCheckpoint(userId, 'PHOTOS_DONE');
+
+        return {
+          isSuccess: true,
+          message: 'Photos Added successfully',
+          data: {
+            checkPoint: 'PHOTOS_DONE',
+            photos,
+          },
+        };
       } else {
         const currentMedia = existingMedia[0];
 
@@ -495,14 +825,158 @@ export class AuthService {
           .where(eq(schema.userMedia.userId, userId));
       }
 
-      return { success: true, message: 'Photos updated successfully' };
+      return {
+        isSuccess: true,
+        message: 'Photos updated successfully',
+        data: {
+          checkPoint: user.loginFormCheckPoint,
+          photos,
+        },
+      };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       throw new Error(`Failed to update media: ${errorMessage}`);
     }
   }
 
-  // Video Generation using AI will be integrated later
+  // Media Preference
+
+  async updateMedia(
+    userId: string,
+    data: { mediaPreference: string; mediaUrl: string },
+  ) {
+    try {
+      const { mediaPreference, mediaUrl } = data;
+
+      if (!mediaPreference || !mediaUrl) {
+        throw new Error('mediaPreference and mediaUrl are required.');
+      }
+
+      const user = await this.getUserById(userId);
+      const userInfo = await this.getUserInfo(userId);
+      const interests = await this.getUserInterests(userId);
+      const location = await this.getUserLocation(userId);
+      const mediaData = await this.getUserMedia(userId);
+
+      if (!user) throw new Error('User not found');
+      if (!userInfo) throw new Error('User info not found');
+
+      const {
+        nickName,
+        dateOfBirth,
+        gender,
+        genderPreference,
+        distancePreferredInKm,
+        candidateId,
+      } = userInfo;
+
+      if (
+        !nickName ||
+        !dateOfBirth ||
+        !gender ||
+        !genderPreference ||
+        !candidateId ||
+        distancePreferredInKm == null ||
+        interests.length === 0 ||
+        !location ||
+        !mediaData
+      ) {
+        throw new Error(
+          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, distance preference, and candidateId and photos are set before updating media preference.',
+        );
+      }
+
+      const existingMedia = await this.db
+        .select()
+        .from(schema.userMedia)
+        .where(eq(schema.userMedia.userId, userId));
+
+      if (existingMedia.length === 0) {
+        throw new Error('User media record not found');
+      }
+
+      await this.db
+        .update(schema.userMedia)
+        .set({
+          preferredMedia: [mediaUrl],
+        })
+        .where(eq(schema.userMedia.userId, userId));
+
+      await this.db
+        .update(schema.userInfo)
+        .set({
+          userMediaPreference: mediaPreference,
+        })
+        .where(eq(schema.userInfo.userId, userId));
+
+      await this.updateCheckpoint(userId, 'MEDIA_PREFERENCE_DONE');
+
+      return {
+        isSuccess: true,
+        message: 'User media preference updated successfully',
+        data: {
+          checkPoint: 'MEDIA_PREFERENCE_DONE',
+          mediaPreference,
+          mediaUrl,
+        },
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      throw new Error(`Failed to update media preference: ${errorMessage}`);
+    }
+  }
+
+  // Best Image selection and Video Generation using AI will be integrated later
+
+  async getVideo(userId: string) {
+    const mediaData = await this.getUserMedia(userId);
+
+    if (!mediaData) {
+      throw new Error('No media found for this user');
+    }
+
+    const userPhotos = mediaData.photos;
+
+    if (!userPhotos || userPhotos.length < 1) {
+      throw new Error('Minimum 1 image required');
+    }
+
+    // TODO: Select best image using Google Vision API
+
+    // TODO: Generate AI video using API
+
+    const aiVideo =
+      'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';
+
+    const photoSlideShow =
+      'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
+
+    const currentVideos = mediaData.videos || [];
+    const updatedVideos = [...currentVideos, aiVideo];
+
+    await this.db
+      .update(schema.userMedia)
+      .set({
+        videos: updatedVideos,
+      })
+      .where(eq(schema.userMedia.userId, userId));
+
+    await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
+
+    const userData = await this.db
+      .select()
+      .from(schema.user)
+      .where(eq(schema.user.id, userId));
+
+    return {
+      isSuccess: true,
+      data: {
+        checkPoint: userData[0].loginFormCheckPoint,
+        aiVideo,
+        photoSlideShow,
+      },
+    };
+  }
 
   // ----------------------------------------- GET ENDPOINTS ------------------
 

@@ -20,66 +20,54 @@ export class AuthApiGatewayService {
     return 'Done';
   }
 
-  async refreshAccessToken(refreshToken: string) {
-    const result = await firstValueFrom(
-      this.authService.send<{ accessToken: string; refreshToken: string }>(
-        { cmd: 'refresh-token' },
-        { refreshToken },
-      ),
-    );
+  // async refreshAccessToken(refreshToken: string) {
+  //   const result = await firstValueFrom(
+  //     this.authService.send<{ accessToken: string; refreshToken: string }>(
+  //       { cmd: 'refresh-token' },
+  //       { refreshToken },
+  //     ),
+  //   );
 
-    return result; // { accessToken, refreshToken }
+  //   return result; // { accessToken, refreshToken }
+  // }
+
+  postSocialLogin(user: User) {
+    return this.authService.send<string>({ cmd: 'auth-social-login' }, user);
   }
 
-  async postSocialLogin(user: User) {
-    const status: string = await firstValueFrom(
-      this.authService.send<string>({ cmd: 'auth-social-login' }, user),
-    );
-
-    return status;
-  }
-
-  async postUpdateIntro(
+  postUpdateIntro(
     userId: string,
     data: { nickName: string; dateOfBirth: Date },
   ) {
     const { nickName, dateOfBirth } = data;
 
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-intro' },
-        {
-          userId,
-          data: {
-            nickName,
-            dateOfBirth,
-          },
+    return this.authService.send<string>(
+      { cmd: 'update-user-intro' },
+      {
+        userId,
+        data: {
+          nickName,
+          dateOfBirth,
         },
-      ),
+      },
     );
-
-    return status;
   }
 
-  async postUpdateInterest(userId: string, data: { interests: string[] }) {
+  postUpdateInterest(userId: string, data: { interests: string[] }) {
     const { interests } = data;
 
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-interest' },
-        {
-          userId,
-          data: {
-            interests,
-          },
+    return this.authService.send<string>(
+      { cmd: 'update-user-interest' },
+      {
+        userId,
+        data: {
+          interests,
         },
-      ),
+      },
     );
-
-    return status;
   }
 
-  async postUpdateLocation(
+  postUpdateLocation(
     userId: string,
     data: {
       location: {
@@ -90,117 +78,127 @@ export class AuthApiGatewayService {
   ) {
     const { location } = data;
 
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-location' },
-        {
-          userId,
-          data: {
-            location,
-          },
+    return this.authService.send<string>(
+      { cmd: 'update-user-location' },
+      {
+        userId,
+        data: {
+          location,
         },
-      ),
+      },
     );
-
-    return status;
   }
 
-  async postUpdateGender(userId: string, data: { gender: string }) {
+  postUpdateGender(userId: string, data: { gender: string }) {
     const { gender } = data;
 
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-gender' },
-        {
-          userId,
-          data: {
-            gender,
-          },
+    return this.authService.send<string>(
+      { cmd: 'update-user-gender' },
+      {
+        userId,
+        data: {
+          gender,
         },
-      ),
+      },
     );
-
-    return status;
   }
 
-  async postUpdateGenderPreference(
+  postUpdateGenderPreference(
     userId: string,
     data: { genderPreference: string },
   ) {
     const { genderPreference } = data;
 
-    const status = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-gender-preference' },
-        { userId, data: { genderPreference } },
-      ),
+    return this.authService.send<string>(
+      { cmd: 'update-user-gender-preference' },
+      { userId, data: { genderPreference } },
     );
-
-    return status;
   }
 
-  async postUpdateDistancePreferredInKm(
+  postUpdateDistancePreferredInKm(
     userId: string,
     data: { distancePreferredInKm: number },
   ) {
     const { distancePreferredInKm } = data;
 
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-distance-preferred' },
-        {
-          userId,
-          data: {
-            distancePreferredInKm,
-          },
+    return this.authService.send<string>(
+      { cmd: 'update-user-distance-preferred' },
+      {
+        userId,
+        data: {
+          distancePreferredInKm,
         },
-      ),
+      },
     );
-
-    return status;
   }
 
-  async postUpdatePhotos(userId: string, data: { photos: string[] }) {
+  //  createSession(userId: string) {
+  //   const status = await firstValueFrom(
+  //     this.authService.send<string>({ cmd: 'create-session' }, { userId }),
+  //   );
+  //   return status;
+  // }
+
+  postUpdateKyc(userId: string) {
+    // const { sessionId } = data;
+
+    return this.authService.send<string>(
+      { cmd: 'update-user-kyc' },
+      { userId },
+    );
+  }
+
+  postVerifyPhotos(userId: string, data: { photos: string[] }) {
     const { photos } = data;
 
-    const status: string = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-photos' },
-        {
-          userId,
-          data: {
-            photos,
-          },
-        },
-      ),
+    return this.authService.send<string>(
+      { cmd: 'verify-user-photos' },
+      { userId, data: { photos } },
     );
+  }
 
-    return status;
+  postUpdatePhotos(userId: string, data: { photos: string[] }) {
+    const { photos } = data;
+
+    return this.authService.send<string>(
+      { cmd: 'update-user-photos' },
+      {
+        userId,
+        data: {
+          photos,
+        },
+      },
+    );
+  }
+
+  postUpdateMediaPreference(
+    userId: string,
+    data: { mediaPreference: string; mediaUrl: string },
+  ) {
+    const { mediaPreference, mediaUrl } = data;
+
+    return this.authService.send<string>(
+      { cmd: 'update-user-media-preference' },
+      { userId, data: { mediaPreference, mediaUrl } },
+    );
+  }
+
+  userVideo(userId: string) {
+    return this.authService.send<string>({ cmd: 'get-user-video' }, { userId });
   }
 
   // -----------------------GET REquest-------------------
 
-  async getUserDetails(userId: string): Promise<{
-    email?: string;
-    nickName: string;
-    dateOfBirth: string;
-    interests: string[];
-    location: { latitude: number; longitude: number };
-    gender: string;
-    distancePreferredInKm: number;
-    photos: string[];
-  }> {
-    return firstValueFrom(
-      this.authService.send<{
-        email?: string;
-        nickName: string;
-        dateOfBirth: string;
-        interests: string[];
-        location: { latitude: number; longitude: number };
-        gender: string;
-        distancePreferredInKm: number;
-        photos: string[];
-      }>({ cmd: 'get-user-details' }, userId),
-    );
+  getUserDetails(userId: string) {
+    return this.authService.send<{
+      email?: string;
+      nickName: string;
+      dateOfBirth: string;
+      interests: string[];
+      location: { latitude: number; longitude: number };
+      gender: string;
+      distancePreferredInKm: number;
+      photos: string[];
+    }>({ cmd: 'get-user-details' }, { userId });
   }
 }

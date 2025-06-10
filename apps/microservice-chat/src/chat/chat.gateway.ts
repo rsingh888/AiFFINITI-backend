@@ -67,6 +67,7 @@ interface IAuthClientUserInfo {
 @WebSocketGateway({
   cors: {
     origin: allowedOrigins,
+    credentials: true,
   },
   path: '/socket.io',
 })

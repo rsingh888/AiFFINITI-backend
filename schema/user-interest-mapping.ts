@@ -1,10 +1,9 @@
 import {
   pgTable,
   serial,
-  text,
+  varchar,
   integer,
   primaryKey,
-  varchar,
 } from 'drizzle-orm/pg-core';
 import { user } from './user';
 
@@ -36,7 +35,7 @@ export const allInterest = [
 
 export const userInterests = pgTable('interests', {
   id: serial('id').primaryKey(),
-  name: text('name').notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
 });
 
 export const userInterestMapping = pgTable(

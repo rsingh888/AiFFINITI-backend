@@ -31,11 +31,13 @@ import {
   pgTable,
   uuid,
   jsonb,
-  //   integer,
+  varchar,
   text,
   timestamp,
 } from 'drizzle-orm/pg-core';
 import { user } from './user';
+import { gameSessions } from './game_sessions';
+import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 // import { user } from './user';
 
 export const ConversationType = {
@@ -47,11 +49,12 @@ export const ConversationType = {
 export const ChatMessageType = {
   TEXT: 'text',
   IMAGE: 'image',
-  GAME_REQUESTED: 'game-requested',
-  GAME_REQUEST_ACCEPTED: 'game-request-accepted',
-  GAME_REQUEST_REJECTED: 'game-request-rejected',
-  GAME_STARTED: 'game-started',
-  GAME_RESULT: 'game-result',
+  GAME: 'game',
+  // GAME_REQUESTED: 'game-requested',
+  // GAME_REQUEST_ACCEPTED: 'game-request-accepted',
+  // GAME_REQUEST_REJECTED: 'game-request-rejected',
+  // GAME_STARTED: 'game-started',
+  // GAME_RESULT: 'game-result',
 } as const;
 
 export type ChatMessageTypeTypes =
@@ -59,22 +62,29 @@ export type ChatMessageTypeTypes =
 
 export const conversations = pgTable('conversations', {
   id: uuid('id').primaryKey().defaultRandom(),
-  type: text('type').notNull(),
+  type: varchar('type', { length: 255 }).notNull(),
   lastMessageId: uuid('last_message_id'),
   participants: jsonb('participants').$type<string[]>().notNull(),
-  //   unreadMessagesCount: integer('unread_messages_count').default(0).notNull(),
+  // for example: [ "53ead17b-1e6a-46c9-bd5a-cb820f0ad0dd", "70acd124-d419-4344-a535-dcad51d40f82"]
 });
 
 export const chat = pgTable('chat', {
   id: uuid('id').primaryKey().defaultRandom(),
-  type: text('type').notNull(),
-  senderId: text('sender_id')
+  type: varchar('type', { length: 255 }).notNull(),
+  senderId: varchar('sender_id', { length: 255 })
     .notNull()
     .references(() => user.id),
-  messageData: jsonb('message_data').notNull(),
+  message: text('message'),
+  gameSessionId: uuid('game_session_id').references(() => gameSessions.id, {
+    onDelete: 'set null',
+  }),
+  imageUrl: text('image_url'),
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
   readAt: timestamp('read_at', { mode: 'date' }),
   conversationId: uuid('conversation_id')
     .notNull()
     .references(() => conversations.id),
 });
+
+export type ISelectChat = InferSelectModel<typeof chat>;
+export type IInsertChat = InferInsertModel<typeof chat>;

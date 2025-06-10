@@ -29,6 +29,7 @@ import { GameService } from '../games/games.service';
 const allowedOrigins = [
   'http://localhost:4000',
   'https://testing-aiffiniti-frontend-testing.vercel.app',
+  'https://likhilesh.xyz',
 ];
 
 interface AuthenticatedSocket extends Socket {
@@ -67,6 +68,7 @@ interface IAuthClientUserInfo {
   cors: {
     origin: allowedOrigins,
   },
+  path: '/socket.io',
 })
 export class ChatGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit

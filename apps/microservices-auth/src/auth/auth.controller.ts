@@ -29,10 +29,10 @@ export class AuthController {
   }
 
   // for granting new access token to user --> if expired
-  @MessagePattern({ cmd: 'refresh-token' })
-  refreshToken(data: { refreshToken: string }) {
-    return this.authService.refreshSupabaseSession(data.refreshToken);
-  }
+  // @MessagePattern({ cmd: 'refresh-token' })
+  // refreshToken(data: { refreshToken: string }) {
+  //   return this.authService.refreshSupabaseSession(data.refreshToken);
+  // }
 
   @MessagePattern({ cmd: 'auth-social-login' })
   async socialLogin(user: User) {

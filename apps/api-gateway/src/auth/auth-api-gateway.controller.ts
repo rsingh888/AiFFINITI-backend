@@ -15,7 +15,7 @@ import { UpdateGenderDto } from './dto/update-gender.dto';
 import { UpdateDistanceDto } from './dto/update-distance.dto';
 import { UpdatePhotosDto } from './dto/update-photos.dto';
 import { AuthGuard } from '../common/guard/auth.guard';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+// import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateGenderPreferenceDto } from './dto/update-gender-preference.dto';
 import { User } from '@supabase/supabase-js';
 import { UpdateMediaPreferenceDto } from './dto/update-media-preference.dto';
@@ -37,21 +37,21 @@ export class AuthApiGatewayController {
 
   // For granting new access token to user
 
-  @Post('refresh-token')
-  async refreshToken(@Body() body: RefreshTokenDto) {
-    return this.AuthApiGatewayService.refreshAccessToken(body.refreshToken);
-  }
+  // @Post('refresh-token')
+  //  refreshToken(@Body() body: RefreshTokenDto) {
+  //   return this.AuthApiGatewayService.refreshAccessToken(body.refreshToken);
+  // }
 
   @UseGuards(AuthGuard)
   @Post('social-login')
-  async postSocialLogin(@Req() req: { user: User }) {
+  postSocialLogin(@Req() req: { user: User }) {
     const user = req.user;
     return this.AuthApiGatewayService.postSocialLogin(user);
   }
 
   @UseGuards(AuthGuard)
   @Post('user-intro')
-  async postUserIntro(
+  postUserIntro(
     @Req() req: { user: { id: string } },
     @Body() body: UpdateIntroDto,
   ) {
@@ -62,7 +62,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-interest')
-  async postUserInterest(
+  postUserInterest(
     @Req() req: { user: { id: string } },
     @Body() body: UpdateInterestDto,
   ) {
@@ -72,7 +72,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-location')
-  async postUserLocation(
+  postUserLocation(
     @Req() req: { user: { id: string } },
     @Body()
     body: UpdateLocationDto,
@@ -84,7 +84,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-gender')
-  async postUserGender(
+  postUserGender(
     @Req() req: { user: { id: string } },
     @Body() body: UpdateGenderDto,
   ) {
@@ -95,7 +95,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-gender-preference')
-  async postUserGenderPreference(
+  postUserGenderPreference(
     @Req() req: { user: { id: string } },
     @Body() body: UpdateGenderPreferenceDto,
   ) {
@@ -106,7 +106,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-distance-preferred')
-  async postUserDistancePreferred(
+  postUserDistancePreferred(
     @Req() req: { user: { id: string } },
     @Body() body: UpdateDistanceDto,
   ) {
@@ -120,7 +120,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-kyc')
-  async postUserKyc(@Req() req: { user: { id: string } }) {
+  postUserKyc(@Req() req: { user: { id: string } }) {
     const userId = req.user.id;
 
     return this.AuthApiGatewayService.postUpdateKyc(userId);
@@ -128,14 +128,14 @@ export class AuthApiGatewayController {
 
   // @UseGuards(AuthGuard)
   // @Post('biopass/liveness-session')
-  // async createLivenessSession(@Req() req: { user: { id: string } }) {
+  //  createLivenessSession(@Req() req: { user: { id: string } }) {
   //   const userId = req.user.id;
   //   return this.AuthApiGatewayService.createSession(userId);
   // }
 
   // @UseGuards(AuthGuard)
   // @Post('verify-photos')
-  // async postUserVerifyPhotos(
+  //  postUserVerifyPhotos(
   //   @Req() req: { user: { id: string } },
   //   @Body() body: UpdatePhotosDto,
   // ) {
@@ -146,7 +146,7 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-photos')
-  async postUserPhotos(
+  postUserPhotos(
     @Req() req: { user: { id: string } },
     @Body() body: UpdatePhotosDto,
   ) {

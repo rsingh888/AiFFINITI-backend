@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
 import { inArray } from 'drizzle-orm';
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 
@@ -41,27 +41,27 @@ export class AuthService {
 
   // for granting new access token to user
 
-  async refreshSupabaseSession(refreshToken: string) {
-    const client = createClient(
-      this.configService.get<string>('SUPABASE_URL') || '',
-      this.configService.get<string>('SUPABASE_KEY') || '',
-    );
+  // async refreshSupabaseSession(refreshToken: string) {
+  //   const client = createClient(
+  //     this.configService.get<string>('SUPABASE_URL') || '',
+  //     this.configService.get<string>('SUPABASE_KEY') || '',
+  //   );
 
-    const { data, error } = await client.auth.refreshSession({
-      refresh_token: refreshToken,
-    });
+  //   const { data, error } = await client.auth.refreshSession({
+  //     refresh_token: refreshToken,
+  //   });
 
-    if (error || !data.session?.access_token) {
-      throw new Error('Failed to refresh token');
-    }
+  //   if (error || !data.session?.access_token) {
+  //     throw new Error('Failed to refresh token');
+  //   }
 
-    return {
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token,
-      expiresIn: data.session.expires_in,
-      user: data.session.user,
-    };
-  }
+  //   return {
+  //     accessToken: data.session.access_token,
+  //     refreshToken: data.session.refresh_token,
+  //     expiresIn: data.session.expires_in,
+  //     user: data.session.user,
+  //   };
+  // }
 
   // For Guard
   async verifyToken(accessToken: string) {

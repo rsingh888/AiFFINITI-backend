@@ -159,13 +159,17 @@ export class AuthApiGatewayService {
     return status;
   }
 
-  async postUpdateKyc(userId: string, data: { sessionId: string }) {
-    const { sessionId } = data;
+  // async createSession(userId: string) {
+  //   const status = await firstValueFrom(
+  //     this.authService.send<string>({ cmd: 'create-session' }, { userId }),
+  //   );
+  //   return status;
+  // }
+
+  async postUpdateKyc(userId: string) {
+    // const { sessionId } = data;
     const status = await firstValueFrom(
-      this.authService.send<string>(
-        { cmd: 'update-user-kyc' },
-        { userId, data: { sessionId } },
-      ),
+      this.authService.send<string>({ cmd: 'update-user-kyc' }, { userId }),
     );
 
     return status;
@@ -200,6 +204,19 @@ export class AuthApiGatewayService {
     );
 
     return status;
+  }
+
+  async postUpdateMediaPreference(
+    userId: string,
+    data: { mediaPreference: string; mediaUrl: string },
+  ) {
+    const { mediaPreference, mediaUrl } = data;
+    return firstValueFrom(
+      this.authService.send<string>(
+        { cmd: 'update-user-media-preference' },
+        { userId, data: { mediaPreference, mediaUrl } },
+      ),
+    );
   }
 
   async userVideo(userId: string): Promise<string> {

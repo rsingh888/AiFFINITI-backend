@@ -9,6 +9,8 @@ import { user } from './user';
 //   'Both',
 // ]);
 
+export const genderType = ['Male', 'Female'];
+
 export const userInfo = pgTable('user-info', {
   userId: varchar('user-id', { length: 255 })
     .primaryKey()
@@ -19,4 +21,5 @@ export const userInfo = pgTable('user-info', {
   genderPreference: varchar('gender-preference', { length: 50 }),
   distancePreferredInKm: integer('distance-preferred-in-km'),
   candidateId: varchar('candidate-id', { length: 255 }),
+  userMediaPreference: varchar('user-media-preference', { length: 255 }),
 });

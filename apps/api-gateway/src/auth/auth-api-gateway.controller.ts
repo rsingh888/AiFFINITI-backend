@@ -18,7 +18,8 @@ import { AuthGuard } from '../common/guard/auth.guard';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateGenderPreferenceDto } from './dto/update-gender-preference.dto';
 import { User } from '@supabase/supabase-js';
-import { UpdateKycDto } from './dto/update-kyc.dto';
+import { UpdateMediaPreferenceDto } from './dto/update-media-preference.dto';
+// import { UpdateKycDto } from './dto/update-kyc.dto';
 
 @Controller()
 export class AuthApiGatewayController {
@@ -119,25 +120,29 @@ export class AuthApiGatewayController {
 
   @UseGuards(AuthGuard)
   @Post('user-kyc')
-  async postUserKyc(
-    @Req() req: { user: { id: string } },
-    @Body() body: UpdateKycDto,
-  ) {
+  async postUserKyc(@Req() req: { user: { id: string } }) {
     const userId = req.user.id;
 
-    return this.AuthApiGatewayService.postUpdateKyc(userId, body);
+    return this.AuthApiGatewayService.postUpdateKyc(userId);
   }
 
-  @UseGuards(AuthGuard)
-  @Post('verify-photos')
-  async postUserVerifyPhotos(
-    @Req() req: { user: { id: string } },
-    @Body() body: UpdatePhotosDto,
-  ) {
-    const userId = req.user.id;
+  // @UseGuards(AuthGuard)
+  // @Post('biopass/liveness-session')
+  // async createLivenessSession(@Req() req: { user: { id: string } }) {
+  //   const userId = req.user.id;
+  //   return this.AuthApiGatewayService.createSession(userId);
+  // }
 
-    return this.AuthApiGatewayService.postVerifyPhotos(userId, body);
-  }
+  // @UseGuards(AuthGuard)
+  // @Post('verify-photos')
+  // async postUserVerifyPhotos(
+  //   @Req() req: { user: { id: string } },
+  //   @Body() body: UpdatePhotosDto,
+  // ) {
+  //   const userId = req.user.id;
+
+  //   return this.AuthApiGatewayService.postVerifyPhotos(userId, body);
+  // }
 
   @UseGuards(AuthGuard)
   @Post('user-photos')
@@ -148,6 +153,17 @@ export class AuthApiGatewayController {
     const userId = req.user.id;
 
     return this.AuthApiGatewayService.postUpdatePhotos(userId, body);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('user-media-preference')
+  postUserMediaPreference(
+    @Req() req: { user: { id: string } },
+    @Body() body: UpdateMediaPreferenceDto,
+  ) {
+    const userId = req.user.id;
+
+    return this.AuthApiGatewayService.postUpdateMediaPreference(userId, body);
   }
 
   @UseGuards(AuthGuard)

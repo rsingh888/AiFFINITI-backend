@@ -895,16 +895,10 @@ export class AuthService {
         throw new Error('User media record not found');
       }
 
-      const currentPreferredMedia = existingMedia[0].preferredMedia || [];
-
-      const updatedMediaArray = Array.from(
-        new Set([...currentPreferredMedia, mediaUrl]),
-      );
-
       await this.db
         .update(schema.userMedia)
         .set({
-          preferredMedia: updatedMediaArray,
+          preferredMedia: [mediaPreference],
         })
         .where(eq(schema.userMedia.userId, userId));
 

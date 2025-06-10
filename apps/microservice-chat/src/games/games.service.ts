@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class GameService {
   private readonly logger = new Logger(GameService.name);
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private configService: ConfigService,
+  ) {}
 
   async getExternalData({
     player1,
@@ -26,9 +30,11 @@ export class GameService {
     sessionId: string;
   }): Promise<string | null> {
     try {
+      const WORD_PUZZLE_GAME_SERVICE_URL =
+        this.configService.get<string>('WORD_PUZZLE_GAME_SERVICE_URL') || '';
       const axiosResponse = await firstValueFrom(
         this.httpService.post(
-          'http://localhost:3010/api/v1/generate-auth-token',
+          `${WORD_PUZZLE_GAME_SERVICE_URL}/api/v1/generate-auth-token`,
           {
             player1,
             player2,

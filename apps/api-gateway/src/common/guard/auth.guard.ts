@@ -25,7 +25,7 @@ export class AuthGuard implements CanActivate {
 
     const authHeader = request.headers?.authorization;
 
-    console.log('---> "authHeader"', authHeader);
+    // console.log('---> "authHeader"', authHeader);
 
     if (
       !authHeader ||
@@ -42,7 +42,7 @@ export class AuthGuard implements CanActivate {
       token = authHeader.split('Bearer%20')[1];
     }
 
-    console.log('---> "token"', token);
+    // console.log('---> "token"', token);
 
     try {
       const user = await firstValueFrom<SupabaseUser>(

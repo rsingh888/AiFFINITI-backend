@@ -380,13 +380,21 @@ export class ChatGateway
               firstValueFrom<IAuthClientUserInfo>(
                 this.authClient.send(
                   { cmd: 'get-user-details' },
-                  conversation.participants.find((p) => p === senderId),
+                  {
+                    userId: conversation.participants.find(
+                      (p) => p === senderId,
+                    ),
+                  },
                 ),
               ),
               firstValueFrom<IAuthClientUserInfo>(
                 this.authClient.send(
                   { cmd: 'get-user-details' },
-                  conversation.participants.find((p) => p !== senderId),
+                  {
+                    userId: conversation.participants.find(
+                      (p) => p !== senderId,
+                    ),
+                  },
                 ),
               ),
             ]);

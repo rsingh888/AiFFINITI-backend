@@ -96,6 +96,7 @@ export class ChatGateway
     this.logger.log(`Client connected: ${client.id}`);
 
     const token = client.handshake.auth.token as string;
+    console.log('🟡 : token:', token);
 
     if (!token) {
       this.logger.warn(`Connection rejected: No token`);
@@ -107,6 +108,7 @@ export class ChatGateway
       const user = await firstValueFrom<SupabaseUser>(
         this.authClient.send({ cmd: 'auth-verify-token' }, token),
       );
+      console.log('🟡 : handleConnection: user:', user);
 
       if (!user?.id) {
         throw new Error('Invalid auth token');

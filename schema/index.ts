@@ -1,4 +1,4 @@
-import { userInfo, genderType } from './user-info';
+import { userInfo, genderType, genderPreferenceType } from './user-info';
 import { user } from './user';
 import { userLocation } from './user-location';
 import {
@@ -14,6 +14,7 @@ export const schema = {
   user,
   userInfo,
   genderType,
+  genderPreferenceType,
   userInterests,
   userInterestMapping,
   allInterest,

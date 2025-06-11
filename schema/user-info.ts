@@ -10,6 +10,7 @@ import { user } from './user';
 // ]);
 
 export const genderType = ['Male', 'Female'];
+export const genderPreferenceType = ['Male', 'Female', 'Both'];
 
 export const userInfo = pgTable('user-info', {
   userId: varchar('user-id', { length: 255 })

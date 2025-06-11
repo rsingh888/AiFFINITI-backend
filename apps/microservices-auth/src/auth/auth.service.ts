@@ -421,7 +421,7 @@ export class AuthService {
     try {
       const { genderPreference } = data;
 
-      if (!schema.genderType.includes(genderPreference)) {
+      if (!schema.genderPreferenceType.includes(genderPreference)) {
         throw new Error('Invalid gender preference');
       }
 

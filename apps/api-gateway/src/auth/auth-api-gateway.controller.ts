@@ -45,6 +45,7 @@ export class AuthApiGatewayController {
   @UseGuards(AuthGuard)
   @Post('social-login')
   postSocialLogin(@Req() req: { user: User }) {
+    console.log('🟡 : AuthApiGatewayController : User:', req.user);
     const user = req.user;
     return this.AuthApiGatewayService.postSocialLogin(user);
   }

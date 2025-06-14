@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Headers,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthApiGatewayService } from './auth-api-gateway.service';
 import { UpdateIntroDto } from './dto/update-intro.dto';
 import { UpdateInterestDto } from './dto/update-interests.dto';

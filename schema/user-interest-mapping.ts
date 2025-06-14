@@ -47,6 +47,8 @@ export const userInterestMapping = pgTable(
     interestId: integer('interest-id')
       .notNull()
       .references(() => userInterests.id, { onDelete: 'cascade' }),
+
+    isCurrent: integer('is_current').default(0).notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.userId, table.interestId] }),

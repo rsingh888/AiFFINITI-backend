@@ -1,16 +1,27 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class MiscApiGatewayService {
   constructor(@Inject('MISC_SERVICE') private miscService: ClientProxy) {}
 
-  async getAllInterests() {
-    const allInterest = await firstValueFrom(
-      this.miscService.send<string[]>({ cmd: 'get-all-interests' }, {}),
-    );
+  getAllInterests() {
+    return this.miscService.send<string[]>({ cmd: 'get-all-interests' }, {});
+  }
 
-    return allInterest;
+  getAllMatchingProfiles(page: number, limit: number) {
+    const skip = (page - 1) * limit;
+    return this.miscService.send<string>(
+      { cmd: 'get-all-matching-profiles' },
+      { skip, limit },
+    );
+  }
+
+  showProfileView(userId: string, data: { viewedId: string }) {
+    const { viewedId } = data;
+    return this.miscService.send<string>(
+      { cmd: 'show-profile-view' },
+      { userId, data: { viewedId } },
+    );
   }
 }

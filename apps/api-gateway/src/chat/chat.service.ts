@@ -6,12 +6,13 @@ import {
 } from '@nestjs/common';
 import { schema } from '../../../../schema/index';
 
-import { eq, desc, sql, and, asc, inArray } from 'drizzle-orm';
+import { eq, desc, sql, and, asc, inArray, ne } from 'drizzle-orm';
 import { GetChatMessagesDto } from './dto/get-chat-messages.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ConversationType } from 'schema/chatting_schemas';
+import { GameEndedDto } from './dto/game-ended.dto';
 
 @Injectable()
 export class ChatApiGatewayService {
@@ -47,31 +48,29 @@ export class ChatApiGatewayService {
       .offset(dto.offset)
       .limit(dto.limit);
 
-    // const allParticipantIds = Array.from(
-    //   new Set(allConversations.flatMap((c) => c.participants)),
-    // );
+    const allParticipantIds = Array.from(
+      new Set(allConversations.flatMap((c) => c.participants)),
+    );
 
-    // const users = await this.db
-    //   .select()
-    //   .from(schema.userInfo)
-    //   .where(inArray(schema.userInfo.userId, allParticipantIds));
-    // const usersMap = new Map(users.map((user) => [user.userId, user]));
-    // const enrichedConversations = allConversations.map((conv) => ({
-    //   ...conv,
-    //   participantDetails: conv.participants.map((userId) =>
-    //     usersMap.get(userId),
-    //   ),
-    // }));
+    const users = await this.db
+      .select()
+      .from(schema.userInfo)
+      .where(inArray(schema.userInfo.userId, allParticipantIds));
+
+    const usersMap = new Map(users.map((user) => [user.userId, user]));
 
     const allConversationsWithConversationTitle = allConversations.map(
       ({ id, participants, ...rest }) => {
         return {
           id,
           ...rest,
-          conversationTitle: `Dummy_Title_${id.substring(3, 7)}`,
+          conversationTitle: usersMap.get(
+            participants.find((participantId) => participantId !== userId) ||
+              '',
+          )?.nickName,
           participants: participants.map((participantId) => ({
             participantId,
-            name: `Dummy_Name_${participantId.substring(3, 7)}`,
+            name: usersMap.get(participantId)?.nickName,
           })),
         };
       },
@@ -206,5 +205,166 @@ export class ChatApiGatewayService {
       .returning();
 
     return { isSuccess: true, data: { conversation: inserted[0] } };
+  }
+
+  async updateGameStateToEnded(dto: GameEndedDto) {
+    console.log('🟡 : ChatApiGatewayService : dto:', dto);
+
+    const result = await this.db
+      .select({ gameStatus: schema.gameSessions.gameStatus })
+      .from(schema.gameSessions)
+      .where(eq(schema.gameSessions.id, dto.gameSession.sessionId))
+      .limit(1);
+
+    if (result.length > 0 && result[0].gameStatus !== 'ended') {
+      await this.db
+        .update(schema.gameSessions)
+        .set({
+          gameStatus: 'ended',
+          gameEndedAt: new Date(dto.gameSession.gameEndTime),
+        })
+        .where(
+          and(
+            eq(schema.gameSessions.id, dto.gameSession.sessionId),
+            ne(schema.gameSessions.gameStatus, 'ended'),
+          ),
+        );
+
+      const resultArr: string[] = [];
+      if (
+        dto.gameSession.players[0].score === dto.gameSession.players[1].score
+      ) {
+        resultArr.push('tie');
+        resultArr.push('tie');
+      } else if (
+        dto.gameSession.players[0].score > dto.gameSession.players[1].score
+      ) {
+        resultArr.push('win');
+        resultArr.push('lose');
+      } else {
+        resultArr.push('lose');
+        resultArr.push('win');
+      }
+
+      await this.db
+        .update(schema.gameParticipants)
+        .set({
+          score: dto.gameSession.players[0].score.toString(),
+          result: resultArr[0] as 'win' | 'lose' | 'tie',
+        })
+        .where(
+          and(
+            eq(
+              schema.gameParticipants.gameSessionId,
+              dto.gameSession.sessionId,
+            ),
+            eq(
+              schema.gameParticipants.participantId,
+              dto.gameSession.players[0].userId,
+            ),
+          ),
+        );
+
+      await this.db
+        .update(schema.gameParticipants)
+        .set({
+          score: dto.gameSession.players[1].score.toString(),
+          result: resultArr[1] as 'win' | 'lose' | 'tie',
+        })
+        .where(
+          and(
+            eq(
+              schema.gameParticipants.gameSessionId,
+              dto.gameSession.sessionId,
+            ),
+            eq(
+              schema.gameParticipants.participantId,
+              dto.gameSession.players[1].userId,
+            ),
+          ),
+        );
+    }
+  }
+
+  async getLastMessageForConversation(userId: string, conversationId: string) {
+    const [conversation] = await this.db
+      .select()
+      .from(schema.conversations)
+      .where(eq(schema.conversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+
+    if (!conversation.participants.includes(userId)) {
+      throw new ForbiddenException(
+        'You are not a participant of this conversation',
+      );
+    }
+
+    const lastMessageArr = await this.db
+      .select({
+        id: schema.chat.id,
+        type: schema.chat.type,
+        senderId: schema.chat.senderId,
+        message: schema.chat.message,
+        gameSessionId: schema.chat.gameSessionId,
+        imageUrl: schema.chat.imageUrl,
+        createdAt: schema.chat.createdAt,
+        readAt: schema.chat.readAt,
+        conversationId: schema.chat.conversationId,
+        gameSession: schema.gameSessions,
+      })
+      .from(schema.chat)
+      .where(eq(schema.chat.conversationId, conversationId))
+      .leftJoin(
+        schema.gameSessions,
+        eq(schema.chat.gameSessionId, schema.gameSessions.id),
+      )
+      .orderBy(desc(schema.chat.createdAt))
+      .offset(0)
+      .limit(1);
+
+    if (lastMessageArr.length > 0 && lastMessageArr[0].type === 'game') {
+      const lastMessage = lastMessageArr[0];
+
+      if (!lastMessage.gameSessionId)
+        throw new NotFoundException('gameSessionId not found for last message');
+
+      const gameSessionParticipants = await this.db
+        .select({
+          gameSessionId: schema.gameParticipants.gameSessionId,
+          participantId: schema.gameParticipants.participantId,
+          score: schema.gameParticipants.score,
+          result: schema.gameParticipants.result,
+          gameToken: schema.gameParticipants.gameToken,
+          createdAt: schema.gameParticipants.createdAt,
+        })
+        .from(schema.gameParticipants)
+        .where(
+          eq(schema.gameParticipants.gameSessionId, lastMessage.gameSessionId),
+        );
+
+      for (const gameSessionParticipant of gameSessionParticipants) {
+        if (gameSessionParticipant.participantId !== userId) {
+          gameSessionParticipant.gameToken = '';
+        }
+      }
+
+      const lastMessagesWithGameSessionAndParticipants = {
+        ...lastMessage,
+        gameSession: {
+          ...lastMessage.gameSession,
+          participants: gameSessionParticipants,
+        },
+      };
+
+      return {
+        isSuccess: true,
+        message: 'Last message fetched!',
+        data: {
+          lastMessage: lastMessagesWithGameSessionAndParticipants,
+        },
+      };
+    }
   }
 }

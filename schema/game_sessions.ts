@@ -36,7 +36,7 @@ export const gameParticipants = pgTable('game-participants', {
   score: numeric('score'),
 
   result: varchar('result', {
-    enum: ['win', 'lose', 'draw'],
+    enum: ['win', 'lose', 'tie'],
     length: 10,
   }),
 

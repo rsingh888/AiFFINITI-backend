@@ -6,6 +6,7 @@ import { GetUser } from '../decorators/user.decorator';
 import { AuthGuard } from '../common/guard/auth.guard';
 import { SupabaseUser } from '../common/types/userInterface';
 import { CreateConversationDto } from './dto/create-conversation.dto';
+import { GameEndedDto } from './dto/game-ended.dto';
 
 @Controller('chat')
 export class ChatController {
@@ -33,5 +34,22 @@ export class ChatController {
     @Body() dto: CreateConversationDto,
   ) {
     return this.ChatApiGatewayService.createPersonalConversation(user.id, dto);
+  }
+
+  @Post('game-ended')
+  updateGameStateToEnded(@Body() dto: GameEndedDto) {
+    return this.ChatApiGatewayService.updateGameStateToEnded(dto);
+  }
+
+  @UseGuards(AuthGuard)
+  @Get('get-last-message')
+  getLastMessageForConversation(
+    @GetUser() user: SupabaseUser,
+    @Query('conversationId') conversationId: string,
+  ) {
+    return this.ChatApiGatewayService.getLastMessageForConversation(
+      user.id,
+      conversationId,
+    );
   }
 }

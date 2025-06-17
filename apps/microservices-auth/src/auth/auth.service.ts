@@ -47,6 +47,7 @@ export class AuthService {
     const { data, error } = await this.supabase.auth.getUser(accessToken);
 
     if (error || !data?.user) {
+      console.log('🟡 : AuthService : error:', error);
       throw new UnauthorizedException('Invalid or expired token');
     }
 
@@ -423,7 +424,7 @@ export class AuthService {
     try {
       const { genderPreference } = data;
 
-      if (!schema.genderType.includes(genderPreference)) {
+      if (!schema.genderPreferenceType.includes(genderPreference)) {
         throw new BadRequestException('Invalid gender preference');
       }
 

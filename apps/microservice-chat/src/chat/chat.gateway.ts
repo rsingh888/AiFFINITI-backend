@@ -10,7 +10,13 @@ import {
 
 import { Server, Socket } from 'socket.io';
 import { SendP2PMessageDto } from './dto/p2p-message.dto';
-import { Inject, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Redis } from 'ioredis';
 
 import { createAdapter } from '@socket.io/redis-adapter';
@@ -20,7 +26,7 @@ import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { schema } from '../../../../schema/index';
 import { ChatMessageType } from 'schema/chatting_schemas';
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { SupabaseUser } from 'apps/api-gateway/src/common/types/userInterface';
 import { ChattingSocketService } from './chatting-socket.service';
 import { GameService } from '../games/games.service';
@@ -96,6 +102,7 @@ export class ChatGateway
     this.logger.log(`Client connected: ${client.id}`);
 
     const token = client.handshake.auth.token as string;
+    console.log('🟡 : token:', token);
 
     if (!token) {
       this.logger.warn(`Connection rejected: No token`);
@@ -107,6 +114,7 @@ export class ChatGateway
       const user = await firstValueFrom<SupabaseUser>(
         this.authClient.send({ cmd: 'auth-verify-token' }, token),
       );
+      console.log('🟡 : handleConnection: user:', user);
 
       if (!user?.id) {
         throw new Error('Invalid auth token');
@@ -447,8 +455,8 @@ export class ChatGateway
           }
 
           const data2 = await this.chattingSocketService.updateTwoGameTokens({
-            id1: conversation.participants[0],
-            id2: conversation.participants[1],
+            id1: user1?.id,
+            id2: user2?.id,
             token1: token1 || '',
             token2: token2 || '',
             gameSessionId: lastMessage.gameSessionId,
@@ -568,6 +576,107 @@ export class ChatGateway
           const rejectReason = 'Cannot reject: no game session';
           this.logger.warn(rejectReason);
           return rejectReason;
+        }
+      }
+    }
+  }
+
+  @SubscribeMessage('game-state-refresh')
+  async handleGameSessionRefresh(
+    @MessageBody()
+    payload: { conversationId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    console.log(
+      `🟡🟠🟡🟠
+      Game State Refresh
+      socketId=${client.id}
+      senderId=${client.data.userId}
+      recipientId=${payload.conversationId}
+      🟡🟠`,
+    );
+
+    const [conversation] = await this.db
+      .select()
+      .from(schema.conversations)
+      .where(eq(schema.conversations.id, payload.conversationId))
+      .limit(1);
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+
+    const senderId = client.data.userId;
+
+    if (!conversation.participants.includes(senderId)) {
+      throw new ForbiddenException(
+        'You are not a participant of this conversation',
+      );
+    }
+
+    const lastMessageArr = await this.db
+      .select({
+        id: schema.chat.id,
+        type: schema.chat.type,
+        senderId: schema.chat.senderId,
+        message: schema.chat.message,
+        gameSessionId: schema.chat.gameSessionId,
+        imageUrl: schema.chat.imageUrl,
+        createdAt: schema.chat.createdAt,
+        readAt: schema.chat.readAt,
+        conversationId: schema.chat.conversationId,
+        gameSession: schema.gameSessions,
+      })
+      .from(schema.chat)
+      .where(eq(schema.chat.conversationId, payload.conversationId))
+      .leftJoin(
+        schema.gameSessions,
+        eq(schema.chat.gameSessionId, schema.gameSessions.id),
+      )
+      .orderBy(desc(schema.chat.createdAt))
+      .offset(0)
+      .limit(1);
+
+    if (lastMessageArr.length > 0 && lastMessageArr[0].type === 'game') {
+      const lastMessage = lastMessageArr[0];
+
+      if (!lastMessage.gameSessionId)
+        throw new NotFoundException('gameSessionId not found for last message');
+
+      const gameSessionParticipants = await this.db
+        .select({
+          gameSessionId: schema.gameParticipants.gameSessionId,
+          participantId: schema.gameParticipants.participantId,
+          score: schema.gameParticipants.score,
+          result: schema.gameParticipants.result,
+          gameToken: schema.gameParticipants.gameToken,
+          createdAt: schema.gameParticipants.createdAt,
+        })
+        .from(schema.gameParticipants)
+        .where(
+          eq(schema.gameParticipants.gameSessionId, lastMessage.gameSessionId),
+        );
+
+      for (const gameSessionParticipant of gameSessionParticipants) {
+        if (gameSessionParticipant.participantId !== senderId) {
+          gameSessionParticipant.gameToken = '';
+        }
+      }
+
+      const lastMessagesWithGameSessionAndParticipants = {
+        ...lastMessage,
+        gameSession: {
+          ...lastMessage.gameSession,
+          participants: gameSessionParticipants,
+        },
+      };
+
+      for (let i = 0; i < conversation.participants.length; i++) {
+        const participantId = conversation.participants[i];
+        // const socketId = await this.redisClient.get(participantId);
+        const recipientSockets = await this.redisClient.smembers(participantId);
+        for (const socketId of recipientSockets) {
+          this.server.to(socketId).emit('incoming-p2p-message', {
+            message: lastMessagesWithGameSessionAndParticipants,
+          });
         }
       }
     }

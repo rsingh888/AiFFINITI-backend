@@ -1,16 +1,18 @@
 import { pgTable, varchar, boolean } from 'drizzle-orm/pg-core';
 
-// export const loginFormCheckPointEnum = pgEnum('login-form-checkpoint', [
-//   'STARTED',
-//   'INTRO_DONE',
-//   'INTEREST_DONE',
-//   'LOCATION_DONE',
-//   'GENDER_DONE',
-//   'GENDER_PREFERENCE_DONE',
-//   'DISTANCE_PREFERRED_DONE',
-//   'PHOTOS_DONE',
-//   'VIDEO_DONE',
-// ]);
+export const loginFormCheckPointEnum = [
+  'STARTED',
+  'INTRO_DONE',
+  'INTEREST_DONE',
+  'LOCATION_DONE',
+  'GENDER_DONE',
+  'GENDER_PREFERENCE_DONE',
+  'DISTANCE_PREFERRED_DONE',
+  'KYC_DONE',
+  'PHOTOS_DONE',
+  'VIDEO_PROCESSED_DONE',
+  'MEDIA_PREFERENCE_DONE',
+];
 
 export const user = pgTable('users', {
   id: varchar('id', { length: 255 }).primaryKey(),

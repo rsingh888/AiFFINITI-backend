@@ -1,35 +1,38 @@
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
-import { inArray } from 'drizzle-orm';
 import { SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
+import { ClientProxy } from '@nestjs/microservices';
 
-// interface imageResponse {
-//   imageBase64: string;
-// }
-// interface EnrollResponse {
-//   Success: boolean;
-//   Message?: string;
-//   Candidate?: { Person?: { Id?: string } };
-// }
 @Injectable()
 export class AuthService {
   constructor(
     private configService: ConfigService,
     private readonly httpService: HttpService,
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
+    @Inject('POST_SERVICE') private postClient: ClientProxy,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
-  get biopassKey(): string {
-    return this.configService.get<string>('BIOPASS_API_KEY') || '';
+  get stockmafiaApi(): string {
+    return this.configService.get<string>('STOCKMAFIA_API') || '';
   }
-  get biopassApiUrl(): string {
-    return this.configService.get<string>('BIOPASS_API_URL') || '';
+  get xApiKey(): string {
+    return this.configService.get<string>('X_API_KEY') || '';
+  }
+  get accessToken(): string {
+    return this.configService.get<string>('ACCESS_TOKEN') || '';
   }
 
   // Testing purpose
@@ -39,38 +42,30 @@ export class AuthService {
     return 'Hello';
   }
 
-  // for granting new access token to user
-
-  // async refreshSupabaseSession(refreshToken: string) {
-  //   const client = createClient(
-  //     this.configService.get<string>('SUPABASE_URL') || '',
-  //     this.configService.get<string>('SUPABASE_KEY') || '',
-  //   );
-
-  //   const { data, error } = await client.auth.refreshSession({
-  //     refresh_token: refreshToken,
-  //   });
-
-  //   if (error || !data.session?.access_token) {
-  //     throw new Error('Failed to refresh token');
-  //   }
-
-  //   return {
-  //     accessToken: data.session.access_token,
-  //     refreshToken: data.session.refresh_token,
-  //     expiresIn: data.session.expires_in,
-  //     user: data.session.user,
-  //   };
-  // }
-
   // For Guard
   async verifyToken(accessToken: string) {
     const { data, error } = await this.supabase.auth.getUser(accessToken);
+
     if (error || !data?.user) {
       console.log('🟡 : AuthService : error:', error);
-      throw new Error('Invalid or expired token');
+      throw new UnauthorizedException('Invalid or expired token');
     }
+
     return { ...data.user };
+  }
+
+  private validateCheckPointProgress(
+    userCheckpoint: string,
+    currentStep: string,
+  ) {
+    const steps = schema.loginFormCheckPointEnum;
+    const userIndex = steps.indexOf(userCheckpoint);
+    const currentIndex = steps.indexOf(currentStep);
+
+    if (userIndex < currentIndex - 1) {
+      const requiredStep = steps[currentIndex - 1];
+      throw new BadRequestException(`Please complete '${requiredStep}' first`);
+    }
   }
 
   // Helper to fetch user by ID
@@ -105,13 +100,6 @@ export class AuthService {
       .from(schema.userLocation)
       .where(eq(schema.userLocation.userId, userId));
     return loc[0];
-  }
-
-  private async getUserInterests(userId: string) {
-    return await this.db
-      .select()
-      .from(schema.userInterestMapping)
-      .where(eq(schema.userInterestMapping.userId, userId));
   }
 
   private async getUserMedia(userId: string) {
@@ -167,7 +155,7 @@ export class AuthService {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`❌ OAuth Sign-In failed: ${message}`);
+      throw new Error(`OAuth Sign-In failed: ${message}`);
     }
   }
 
@@ -179,10 +167,27 @@ export class AuthService {
     try {
       const { nickName, dateOfBirth } = data;
 
-      if (!nickName || !dateOfBirth)
-        throw new Error('Nick Name and Date of Birth are required');
+      if (!nickName || !dateOfBirth) {
+        throw new BadRequestException(
+          'Nick Name and Date of Birth are required',
+        );
+      }
 
       const parsedDate = new Date(dateOfBirth);
+      if (isNaN(parsedDate.getTime())) {
+        throw new BadRequestException('Invalid Date of Birth');
+      }
+
+      const user = await this.getUserById(userId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'INTRO_DONE',
+      );
+
       const userInfo = await this.getUserInfo(userId);
 
       if (!userInfo) {
@@ -194,7 +199,7 @@ export class AuthService {
         await this.updateCheckpoint(userId, 'INTRO_DONE');
         return {
           isSuccess: true,
-          message: 'User Info Added successfully',
+          message: 'User Info added successfully',
           data: { checkPoint: 'INTRO_DONE', nickName, dateOfBirth },
         };
       }
@@ -204,7 +209,6 @@ export class AuthService {
         .set({ nickName, dateOfBirth: parsedDate })
         .where(eq(schema.userInfo.userId, userId));
 
-      const user = await this.getUserById(userId);
       return {
         isSuccess: true,
         message: 'User Info updated successfully',
@@ -215,94 +219,74 @@ export class AuthService {
         },
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`Failed to update user info: ${message}`);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      console.error('Unexpected error in updateNickNameDOB:', err);
+      throw new InternalServerErrorException('Failed to update user info');
     }
   }
 
   // INTERESTS
+
   async updateInterest(userId: string, data: { interests: string[] }) {
     const { interests } = data;
 
     if (!interests.every((interest) => schema.allInterest.includes(interest))) {
-      throw new Error('Invalid interest(s)');
+      throw new BadRequestException('Invalid interest(s)');
     }
+
     const user = await this.getUserById(userId);
-    if (!user) throw new Error('User does not exist');
-
-    const userInfo = await this.getUserInfo(userId);
-    if (!userInfo?.nickName || !userInfo?.dateOfBirth) {
-      throw new Error('First fill nickname and date of birth');
+    if (!user) {
+      throw new NotFoundException('User does not exist');
     }
 
-    return await this.db.transaction(async (trx) => {
-      const userMapped = await trx
-        .select({ name: schema.userInterests.name })
+    this.validateCheckPointProgress(
+      user.loginFormCheckPoint ?? '',
+      'INTEREST_DONE',
+    );
+
+    try {
+      const existingInterests = await this.db
+        .select()
         .from(schema.userInterestMapping)
-        .innerJoin(
-          schema.userInterests,
-          eq(schema.userInterestMapping.interestId, schema.userInterests.id),
-        )
         .where(eq(schema.userInterestMapping.userId, userId));
 
-      const alreadyMappedNames = userMapped.map((item) => item.name);
-      const isFirstTime = alreadyMappedNames.length === 0;
+      const isFirstTime = existingInterests.length === 0;
 
-      const newInterestNames = interests.filter(
-        (name) => !alreadyMappedNames.includes(name),
-      );
+      await this.db
+        .delete(schema.userInterestMapping)
+        .where(eq(schema.userInterestMapping.userId, userId));
 
-      const existingInterests = await trx
-        .select()
-        .from(schema.userInterests)
-        .where(inArray(schema.userInterests.name, newInterestNames));
+      if (interests.length > 0) {
+        await this.db.insert(schema.userInterestMapping).values(
+          interests.map((interest) => ({
+            userId,
+            interest,
+          })),
+        );
 
-      const existingNames = existingInterests.map((i) => i.name);
-      const interestsToCreate = newInterestNames.filter(
-        (name) => !existingNames.includes(name),
-      );
-
-      if (interestsToCreate.length > 0) {
-        const inserted = await trx
-          .insert(schema.userInterests)
-          .values(interestsToCreate.map((name) => ({ name })))
-          .returning();
-        existingInterests.push(...inserted);
-      }
-
-      const nameToId = new Map(
-        existingInterests.map((interest) => [interest.name, interest.id]),
-      );
-
-      const newMappings = newInterestNames.map((name) => ({
-        userId,
-        interestId: nameToId.get(name)!,
-      }));
-
-      if (newMappings.length > 0) {
-        await trx.insert(schema.userInterestMapping).values(newMappings);
-      }
-
-      if (isFirstTime) {
-        await this.updateCheckpoint(userId, 'INTEREST_DONE');
+        if (isFirstTime) {
+          await this.updateCheckpoint(userId, 'INTEREST_DONE');
+          return {
+            isSuccess: true,
+            message: 'Interests added successfully',
+            data: { checkPoint: 'INTEREST_DONE', interests },
+          };
+        }
         return {
           isSuccess: true,
-          message: 'Interests Added Successfully',
-          data: {
-            checkPoint: 'INTEREST_DONE',
-            interest: newInterestNames,
-          },
+          message: 'Interests updated successfully',
+          data: { checkPoint: user.loginFormCheckPoint, interests },
         };
       }
-
-      return {
-        isSuccess: true,
-        message: 'Interests Updated successfully',
-        data: {
-          checkPoint: user.loginFormCheckPoint,
-        },
-      };
-    });
+    } catch (err) {
+      console.error('Error updating interests:', err);
+      throw new InternalServerErrorException('Failed to update interests');
+    }
   }
 
   // Location Update
@@ -314,18 +298,22 @@ export class AuthService {
     try {
       const { location } = data;
 
-      const user = await this.getUserById(userId);
-      if (!user) throw new Error('User not found');
-
-      const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
       if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        interests.length === 0
+        typeof location.latitude !== 'number' ||
+        typeof location.longitude !== 'number'
       ) {
-        throw new Error('First fill nickname, date of birth, and interests');
+        throw new BadRequestException('Invalid latitude or longitude');
       }
+
+      const user = await this.getUserById(userId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'LOCATION_DONE',
+      );
 
       const existingLocation = await this.getUserLocation(userId);
       const isFirstTime = !existingLocation;
@@ -334,7 +322,9 @@ export class AuthService {
         await this.db
           .insert(schema.userLocation)
           .values({ userId, ...location });
+
         await this.updateCheckpoint(userId, 'LOCATION_DONE');
+
         return {
           isSuccess: true,
           message: 'Location added successfully',
@@ -353,7 +343,15 @@ export class AuthService {
         data: { checkPoint: user.loginFormCheckPoint, location },
       };
     } catch (err) {
-      throw new Error(
+      console.error('Error in updateLocation:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+
+      throw new InternalServerErrorException(
         `Failed to update location: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
@@ -366,24 +364,20 @@ export class AuthService {
       const { gender } = data;
 
       if (!schema.genderType.includes(gender)) {
-        throw new Error('Invalid gender');
+        throw new BadRequestException('Invalid gender');
       }
 
       const user = await this.getUserById(userId);
-      const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new Error(
-          'First fill nickname, date of birth, interests, and location',
-        );
+      if (!user) {
+        throw new NotFoundException('User not found');
       }
+
+      const userInfo = await this.getUserInfo(userId);
+
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'GENDER_DONE',
+      );
 
       const isFirstTime = !userInfo.gender;
 
@@ -407,13 +401,22 @@ export class AuthService {
         data: { checkPoint: user.loginFormCheckPoint, gender },
       };
     } catch (err) {
-      throw new Error(
+      console.error('Error in updateGender:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+
+      throw new InternalServerErrorException(
         `Failed to update gender: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
   }
 
   // Gender Preference update
+
   async updateGenderPreference(
     userId: string,
     data: { genderPreference: string },
@@ -422,25 +425,19 @@ export class AuthService {
       const { genderPreference } = data;
 
       if (!schema.genderPreferenceType.includes(genderPreference)) {
-        throw new Error('Invalid gender preference');
+        throw new BadRequestException('Invalid gender preference');
       }
 
       const user = await this.getUserById(userId);
-      const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        !userInfo.gender ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new Error(
-          'First fill nickname, date of birth, gender, interests, and location',
-        );
+      if (!user) {
+        throw new NotFoundException('User not found');
       }
+
+      const userInfo = await this.getUserInfo(userId);
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'GENDER_PREFERENCE_DONE',
+      );
 
       const isFirstTime = !userInfo.genderPreference;
 
@@ -464,7 +461,14 @@ export class AuthService {
         data: { checkPoint: user.loginFormCheckPoint, genderPreference },
       };
     } catch (err) {
-      throw new Error(
+      console.error('Error in updateGenderPreference:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
         `Failed to update gender preference: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
@@ -480,28 +484,19 @@ export class AuthService {
       const { distancePreferredInKm } = data;
 
       if (distancePreferredInKm == null || distancePreferredInKm < 0) {
-        throw new Error('Distance must be a non-negative number');
+        throw new BadRequestException('Distance must be a non-negative number');
       }
 
       const user = await this.getUserById(userId);
+      if (!user) throw new NotFoundException('User not found');
+
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'DISTANCE_PREFERRED_DONE',
+      );
 
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        !userInfo?.gender ||
-        !userInfo?.genderPreference ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new Error(
-          'First fill nickname, date of birth, gender, gender preference, interests, and location',
-        );
-      }
-
-      const isFirstTime = !userInfo.distancePreferredInKm;
+      const isFirstTime = userInfo.distancePreferredInKm == null;
 
       await this.db
         .update(schema.userInfo)
@@ -523,11 +518,23 @@ export class AuthService {
       return {
         isSuccess: true,
         message: 'Distance preference updated successfully',
-        data: { checkPoint: user.loginFormCheckPoint, distancePreferredInKm },
+        data: {
+          checkPoint: user.loginFormCheckPoint,
+          distancePreferredInKm,
+        },
       };
     } catch (err) {
-      throw new Error(
-        `Failed to update distance preference: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      console.error('Error in updateDistancePreferred:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update distance preference: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`,
       );
     }
   }
@@ -646,34 +653,15 @@ export class AuthService {
       const candidateId = 'hf3u-fjkejrjfejk-njhjbvherbh';
 
       const user = await this.getUserById(userId);
+      if (!user) throw new NotFoundException('User not found');
+
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
+      if (!userInfo) throw new NotFoundException('User info not found');
 
-      if (!user) throw new Error('User not found');
-      if (!userInfo) throw new Error('User info not found');
-
-      const {
-        nickName,
-        dateOfBirth,
-        gender,
-        genderPreference,
-        distancePreferredInKm,
-      } = userInfo;
-
-      if (
-        !nickName ||
-        !dateOfBirth ||
-        !gender ||
-        !genderPreference ||
-        distancePreferredInKm == null ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new Error(
-          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, and distance preference are set before proceeding with KYC.',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'KYC_DONE',
+      );
 
       await this.db
         .update(schema.userInfo)
@@ -691,8 +679,16 @@ export class AuthService {
         },
       };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`KYC update failed: ${errorMessage}`);
+      console.error('KYC Update Error:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        `KYC update failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -749,46 +745,20 @@ export class AuthService {
   //   }
   // }
 
-  async updatePhotos(
-    userId: string,
-    data: {
-      photos?: string[];
-    },
-  ) {
+  async updatePhotos(userId: string, data: { photos?: string[] }) {
     try {
       const { photos } = data;
 
       const user = await this.getUserById(userId);
+      if (!user) throw new NotFoundException('User not found');
+
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
+      if (!userInfo) throw new NotFoundException('User info not found');
 
-      if (!user) throw new Error('User not found');
-      if (!userInfo) throw new Error('User info not found');
-
-      const {
-        nickName,
-        dateOfBirth,
-        gender,
-        genderPreference,
-        distancePreferredInKm,
-        candidateId,
-      } = userInfo;
-
-      if (
-        !nickName ||
-        !dateOfBirth ||
-        !gender ||
-        !genderPreference ||
-        !candidateId ||
-        distancePreferredInKm == null ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new Error(
-          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, and distance preference and candidateId are set before proceeding with KYC.',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'PHOTOS_DONE',
+      );
 
       const existingMedia = await this.db
         .select()
@@ -805,38 +775,46 @@ export class AuthService {
 
         return {
           isSuccess: true,
-          message: 'Photos Added successfully',
+          message: 'Photos added successfully',
           data: {
             checkPoint: 'PHOTOS_DONE',
             photos,
           },
         };
-      } else {
-        const currentMedia = existingMedia[0];
-
-        const updatedPhotos = photos
-          ? [...new Set([...(currentMedia.photos ?? []), ...photos])] // Removing duplicates
-          : currentMedia.photos;
-
-        await this.db
-          .update(schema.userMedia)
-          .set({
-            photos: updatedPhotos,
-          })
-          .where(eq(schema.userMedia.userId, userId));
       }
+
+      const currentMedia = existingMedia[0];
+
+      const updatedPhotos = photos
+        ? [...new Set([...(currentMedia.photos ?? []), ...photos])]
+        : currentMedia.photos;
+
+      await this.db
+        .update(schema.userMedia)
+        .set({ photos: updatedPhotos })
+        .where(eq(schema.userMedia.userId, userId));
 
       return {
         isSuccess: true,
         message: 'Photos updated successfully',
         data: {
           checkPoint: user.loginFormCheckPoint,
-          photos,
+          photos: updatedPhotos,
         },
       };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update media: ${errorMessage}`);
+      console.error('Photo update error:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update media: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`,
+      );
     }
   }
 
@@ -850,42 +828,21 @@ export class AuthService {
       const { mediaPreference, mediaUrl } = data;
 
       if (!mediaPreference || !mediaUrl) {
-        throw new Error('mediaPreference and mediaUrl are required.');
+        throw new BadRequestException(
+          'mediaPreference and mediaUrl are required.',
+        );
       }
 
       const user = await this.getUserById(userId);
+      if (!user) throw new NotFoundException('User not found');
+
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-      const mediaData = await this.getUserMedia(userId);
+      if (!userInfo) throw new NotFoundException('User info not found');
 
-      if (!user) throw new Error('User not found');
-      if (!userInfo) throw new Error('User info not found');
-
-      const {
-        nickName,
-        dateOfBirth,
-        gender,
-        genderPreference,
-        distancePreferredInKm,
-        candidateId,
-      } = userInfo;
-
-      if (
-        !nickName ||
-        !dateOfBirth ||
-        !gender ||
-        !genderPreference ||
-        !candidateId ||
-        distancePreferredInKm == null ||
-        interests.length === 0 ||
-        !location ||
-        !mediaData
-      ) {
-        throw new Error(
-          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, distance preference, and candidateId and photos are set before updating media preference.',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'MEDIA_PREFERENCE_DONE',
+      );
 
       const existingMedia = await this.db
         .select()
@@ -893,7 +850,7 @@ export class AuthService {
         .where(eq(schema.userMedia.userId, userId));
 
       if (existingMedia.length === 0) {
-        throw new Error('User media record not found');
+        throw new NotFoundException('User media record not found');
       }
 
       await this.db
@@ -910,6 +867,11 @@ export class AuthService {
         })
         .where(eq(schema.userInfo.userId, userId));
 
+      await this.db
+        .update(schema.post)
+        .set({ isPublic: true })
+        .where(eq(schema.post.postMediaUrl, mediaUrl));
+
       await this.updateCheckpoint(userId, 'MEDIA_PREFERENCE_DONE');
 
       return {
@@ -922,67 +884,124 @@ export class AuthService {
         },
       };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      throw new Error(`Failed to update media preference: ${errorMessage}`);
+      console.error('Media update error:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update media preference: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`,
+      );
     }
   }
 
   // Best Image selection and Video Generation using AI will be integrated later
 
+  // private async generateAiVideo(image: string) {}
+
   async getVideo(userId: string) {
-    const mediaData = await this.getUserMedia(userId);
+    try {
+      const mediaData = await this.getUserMedia(userId);
 
-    if (!mediaData) {
-      throw new Error('No media found for this user');
+      if (!mediaData) {
+        throw new NotFoundException('No media found for this user.');
+      }
+
+      const userPhotos = mediaData.photos;
+
+      if (!userPhotos || userPhotos.length < 1) {
+        throw new BadRequestException(
+          'At least one image is required to generate a video.',
+        );
+      }
+
+      // TODO: Use Google Vision API to select the best image
+      // const bestImage = await this.selectBestImage(userPhotos);
+      // const bestImage = userPhotos[0];
+      // TODO: Integrate with AI video generation service
+
+      // const aiGeneratedVideo = await this.generateAiVideo(bestImage);
+
+      const aiVideo =
+        'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';
+
+      const photoSlideShow =
+        'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
+
+      await this.postClient
+        .send(
+          { cmd: 'post-create-post' },
+          {
+            userId,
+            data: {
+              postMediaUrl: aiVideo,
+              postType: 'AiVideo',
+            },
+          },
+        )
+        .toPromise();
+
+      await this.postClient
+        .send(
+          { cmd: 'post-create-post' },
+          {
+            userId,
+            data: {
+              postMediaUrl: photoSlideShow,
+              postType: 'PhotoSlideShow',
+            },
+          },
+        )
+        .toPromise();
+
+      const updatedVideos = [...(mediaData.videos || []), aiVideo];
+
+      await this.db
+        .update(schema.userMedia)
+        .set({ videos: updatedVideos })
+        .where(eq(schema.userMedia.userId, userId));
+
+      await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
+
+      const [user] = await this.db
+        .select()
+        .from(schema.user)
+        .where(eq(schema.user.id, userId));
+
+      if (!user) {
+        throw new NotFoundException('User not found.');
+      }
+
+      return {
+        isSuccess: true,
+        data: {
+          checkPoint: user.loginFormCheckPoint,
+          aiVideo,
+          photoSlideShow,
+        },
+      };
+    } catch (err) {
+      console.error('Video generation error:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        `Failed to generate video: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
     }
-
-    const userPhotos = mediaData.photos;
-
-    if (!userPhotos || userPhotos.length < 1) {
-      throw new Error('Minimum 1 image required');
-    }
-
-    // TODO: Select best image using Google Vision API
-
-    // TODO: Generate AI video using API
-
-    const aiVideo =
-      'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';
-
-    const photoSlideShow =
-      'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
-
-    const currentVideos = mediaData.videos || [];
-    const updatedVideos = [...currentVideos, aiVideo];
-
-    await this.db
-      .update(schema.userMedia)
-      .set({
-        videos: updatedVideos,
-      })
-      .where(eq(schema.userMedia.userId, userId));
-
-    await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
-
-    const userData = await this.db
-      .select()
-      .from(schema.user)
-      .where(eq(schema.user.id, userId));
-
-    return {
-      isSuccess: true,
-      data: {
-        checkPoint: userData[0].loginFormCheckPoint,
-        aiVideo,
-        photoSlideShow,
-      },
-    };
   }
 
   // ----------------------------------------- GET ENDPOINTS ------------------
 
   async getDetails(userId: string) {
-    // Get user from DB
+    // Check if user exists
     const userRow = await this.db
       .select()
       .from(schema.user)
@@ -992,20 +1011,16 @@ export class AuthService {
       throw new Error('User not found');
     }
 
-    const [
-      intro,
-      location,
-      genderRow,
-      distanceRow,
-      loginFormCheckPoint,
-      photosRow,
-      videosRow,
-      interestsRaw,
-    ] = await Promise.all([
+    const user = userRow[0];
+
+    // Parallel fetch of user-related data
+    const [userInfo, location, media, interestsRaw] = await Promise.all([
       this.db
         .select({
           nickName: schema.userInfo.nickName,
           dateOfBirth: schema.userInfo.dateOfBirth,
+          gender: schema.userInfo.gender,
+          distancePreferredInKm: schema.userInfo.distancePreferredInKm,
         })
         .from(schema.userInfo)
         .where(eq(schema.userInfo.userId, userId)),
@@ -1016,53 +1031,30 @@ export class AuthService {
         .where(eq(schema.userLocation.userId, userId)),
 
       this.db
-        .select({ gender: schema.userInfo.gender })
-        .from(schema.userInfo)
-        .where(eq(schema.userInfo.userId, userId)),
-
-      this.db
         .select({
-          distancePreferredInKm: schema.userInfo.distancePreferredInKm,
+          photos: schema.userMedia.photos,
+          videos: schema.userMedia.videos,
         })
-        .from(schema.userInfo)
-        .where(eq(schema.userInfo.userId, userId)),
-
-      this.db
-        .select({ loginFormCheckPoint: schema.user.loginFormCheckPoint })
-        .from(schema.user)
-        .where(eq(schema.user.id, userId)),
-
-      this.db
-        .select({ photos: schema.userMedia.photos })
         .from(schema.userMedia)
         .where(eq(schema.userMedia.userId, userId)),
 
-      this.db
-        .select({ videos: schema.userMedia.videos })
-        .from(schema.userMedia)
-        .where(eq(schema.userMedia.userId, userId)),
-
-      this.db
-        .select({ name: schema.userInterests.name })
+      await this.db
+        .select()
         .from(schema.userInterestMapping)
-        .innerJoin(
-          schema.userInterests,
-          eq(schema.userInterestMapping.interestId, schema.userInterests.id),
-        )
         .where(eq(schema.userInterestMapping.userId, userId)),
     ]);
 
     return {
-      id: userRow[0].id,
-      email: userRow[0].email,
-      intro: intro[0] ?? null,
+      id: user.id,
+      email: user.email,
+      intro: userInfo[0] ?? null,
       location: location[0] ?? null,
-      gender: genderRow[0]?.gender ?? null,
-      distancePreferredInKm: distanceRow[0]?.distancePreferredInKm ?? null,
-      loginFormCheckPoint: loginFormCheckPoint[0]?.loginFormCheckPoint ?? null,
-      photos: photosRow[0]?.photos ?? [],
-      videos: videosRow[0]?.videos ?? [],
-      interests: interestsRaw.map((i) => i.name),
+      gender: userInfo[0]?.gender ?? null,
+      distancePreferredInKm: userInfo[0]?.distancePreferredInKm ?? null,
+      loginFormCheckPoint: user.loginFormCheckPoint ?? null,
+      photos: media[0]?.photos ?? [],
+      videos: media[0]?.videos ?? [],
+      interests: interestsRaw.map((i) => i.interest),
     };
   }
 }

@@ -7,7 +7,7 @@ import {
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { schema } from '../../../schema/index';
 import { and, eq, sql } from 'drizzle-orm';
-import { PostType } from './dto/create-post.dto';
+import { CreatePostDto, PostType } from './dto/create-post.dto';
 
 @Injectable()
 export class MicroservicePostService {
@@ -18,15 +18,7 @@ export class MicroservicePostService {
 
   // Create Post Endpoint
 
-  async createPost(
-    userId: string,
-    data: {
-      postMediaUrl: string;
-      postType: string;
-      isPublic?: boolean;
-      isDeleted?: boolean;
-    },
-  ) {
+  async createPost(userId: string, data: CreatePostDto) {
     try {
       const {
         postMediaUrl,
@@ -35,7 +27,7 @@ export class MicroservicePostService {
         isDeleted = false,
       } = data;
 
-      if (!Object.values(PostType).includes(postType as PostType)) {
+      if (!Object.values(PostType).includes(postType)) {
         throw new BadRequestException(`Invalid post type: ${postType}`);
       }
 

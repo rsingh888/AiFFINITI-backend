@@ -8,34 +8,31 @@ import {
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
-import { eq, inArray, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
+import { ClientProxy } from '@nestjs/microservices';
 
-// interface imageResponse {
-//   imageBase64: string;
-// }
-// interface EnrollResponse {
-//   Success: boolean;
-//   Message?: string;
-//   Candidate?: { Person?: { Id?: string } };
-// }
 @Injectable()
 export class AuthService {
   constructor(
     private configService: ConfigService,
     private readonly httpService: HttpService,
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
+    @Inject('POST_SERVICE') private postClient: ClientProxy,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
-  get biopassKey(): string {
-    return this.configService.get<string>('BIOPASS_API_KEY') || '';
+  get stockmafiaApi(): string {
+    return this.configService.get<string>('STOCKMAFIA_API') || '';
   }
-  get biopassApiUrl(): string {
-    return this.configService.get<string>('BIOPASS_API_URL') || '';
+  get xApiKey(): string {
+    return this.configService.get<string>('X_API_KEY') || '';
+  }
+  get accessToken(): string {
+    return this.configService.get<string>('ACCESS_TOKEN') || '';
   }
 
   // Testing purpose
@@ -44,30 +41,6 @@ export class AuthService {
     await new Promise((res) => setTimeout(res, 5000));
     return 'Hello';
   }
-
-  // for granting new access token to user
-
-  // async refreshSupabaseSession(refreshToken: string) {
-  //   const client = createClient(
-  //     this.configService.get<string>('SUPABASE_URL') || '',
-  //     this.configService.get<string>('SUPABASE_KEY') || '',
-  //   );
-
-  //   const { data, error } = await client.auth.refreshSession({
-  //     refresh_token: refreshToken,
-  //   });
-
-  //   if (error || !data.session?.access_token) {
-  //     throw new Error('Failed to refresh token');
-  //   }
-
-  //   return {
-  //     accessToken: data.session.access_token,
-  //     refreshToken: data.session.refresh_token,
-  //     expiresIn: data.session.expires_in,
-  //     user: data.session.user,
-  //   };
-  // }
 
   // For Guard
   async verifyToken(accessToken: string) {
@@ -78,6 +51,20 @@ export class AuthService {
     }
 
     return { ...data.user };
+  }
+
+  private validateCheckPointProgress(
+    userCheckpoint: string,
+    currentStep: string,
+  ) {
+    const steps = schema.loginFormCheckPointEnum;
+    const userIndex = steps.indexOf(userCheckpoint);
+    const currentIndex = steps.indexOf(currentStep);
+
+    if (userIndex < currentIndex - 1) {
+      const requiredStep = steps[currentIndex - 1];
+      throw new BadRequestException(`Please complete '${requiredStep}' first`);
+    }
   }
 
   // Helper to fetch user by ID
@@ -112,13 +99,6 @@ export class AuthService {
       .from(schema.userLocation)
       .where(eq(schema.userLocation.userId, userId));
     return loc[0];
-  }
-
-  private async getUserInterests(userId: string) {
-    return await this.db
-      .select()
-      .from(schema.userInterestMapping)
-      .where(eq(schema.userInterestMapping.userId, userId));
   }
 
   private async getUserMedia(userId: string) {
@@ -174,7 +154,7 @@ export class AuthService {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`❌ OAuth Sign-In failed: ${message}`);
+      throw new Error(`OAuth Sign-In failed: ${message}`);
     }
   }
 
@@ -197,6 +177,16 @@ export class AuthService {
         throw new BadRequestException('Invalid Date of Birth');
       }
 
+      const user = await this.getUserById(userId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'INTRO_DONE',
+      );
+
       const userInfo = await this.getUserInfo(userId);
 
       if (!userInfo) {
@@ -217,11 +207,6 @@ export class AuthService {
         .update(schema.userInfo)
         .set({ nickName, dateOfBirth: parsedDate })
         .where(eq(schema.userInfo.userId, userId));
-
-      const user = await this.getUserById(userId);
-      if (!user) {
-        throw new NotFoundException('User not found after update');
-      }
 
       return {
         isSuccess: true,
@@ -258,101 +243,45 @@ export class AuthService {
       throw new NotFoundException('User does not exist');
     }
 
-    const userInfo = await this.getUserInfo(userId);
-    if (!userInfo?.nickName || !userInfo?.dateOfBirth) {
-      throw new BadRequestException('First fill nickname and date of birth');
-    }
+    this.validateCheckPointProgress(
+      user.loginFormCheckPoint ?? '',
+      'INTEREST_DONE',
+    );
 
     try {
-      return await this.db.transaction(async (trx) => {
-        const userMapped = await trx
-          .select({ name: schema.userInterests.name })
-          .from(schema.userInterestMapping)
-          .innerJoin(
-            schema.userInterests,
-            eq(schema.userInterestMapping.interestId, schema.userInterests.id),
-          )
-          .where(eq(schema.userInterestMapping.userId, userId));
+      const existingInterests = await this.db
+        .select()
+        .from(schema.userInterestMapping)
+        .where(eq(schema.userInterestMapping.userId, userId));
 
-        const alreadyMappedNames = userMapped.map((item) => item.name);
-        const isFirstTime = alreadyMappedNames.length === 0;
+      const isFirstTime = existingInterests.length === 0;
 
-        const newInterestNames = interests.filter(
-          (name) => !alreadyMappedNames.includes(name),
+      await this.db
+        .delete(schema.userInterestMapping)
+        .where(eq(schema.userInterestMapping.userId, userId));
+
+      if (interests.length > 0) {
+        await this.db.insert(schema.userInterestMapping).values(
+          interests.map((interest) => ({
+            userId,
+            interest,
+          })),
         );
-
-        const existingInterests = await trx
-          .select()
-          .from(schema.userInterests)
-          .where(inArray(schema.userInterests.name, newInterestNames));
-
-        const existingNames = existingInterests.map((i) => i.name);
-        const interestsToCreate = newInterestNames.filter(
-          (name) => !existingNames.includes(name),
-        );
-
-        if (interestsToCreate.length > 0) {
-          const inserted = await trx
-            .insert(schema.userInterests)
-            .values(interestsToCreate.map((name) => ({ name })))
-            .returning();
-          existingInterests.push(...inserted);
-        }
-
-        const nameToId = new Map(
-          existingInterests.map((interest) => [interest.name, interest.id]),
-        );
-
-        const newMappings = newInterestNames.map((name) => ({
-          userId,
-          interestId: nameToId.get(name)!,
-          isCurrent: 1,
-        }));
-
-        if (newMappings.length > 0) {
-          await trx.insert(schema.userInterestMapping).values(newMappings);
-        }
-
-        const currentInterestIds = interests.map((name) => nameToId.get(name)!);
-
-        await trx
-          .update(schema.userInterestMapping)
-          .set({ isCurrent: 0 })
-          .where(eq(schema.userInterestMapping.userId, userId));
-
-        await trx
-          .update(schema.userInterestMapping)
-          .set({ isCurrent: 1 })
-          .where(
-            and(
-              eq(schema.userInterestMapping.userId, userId),
-              inArray(
-                schema.userInterestMapping.interestId,
-                currentInterestIds,
-              ),
-            ),
-          );
 
         if (isFirstTime) {
           await this.updateCheckpoint(userId, 'INTEREST_DONE');
           return {
             isSuccess: true,
-            message: 'Interests Added Successfully',
-            data: {
-              checkPoint: 'INTEREST_DONE',
-              interest: newInterestNames,
-            },
+            message: 'Interests added successfully',
+            data: { checkPoint: 'INTEREST_DONE', interests },
           };
         }
-
         return {
           isSuccess: true,
-          message: 'Interests Updated successfully',
-          data: {
-            checkPoint: user.loginFormCheckPoint,
-          },
+          message: 'Interests updated successfully',
+          data: { checkPoint: user.loginFormCheckPoint, interests },
         };
-      });
+      }
     } catch (err) {
       console.error('Error updating interests:', err);
       throw new InternalServerErrorException('Failed to update interests');
@@ -380,17 +309,10 @@ export class AuthService {
         throw new NotFoundException('User not found');
       }
 
-      const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        interests.length === 0
-      ) {
-        throw new BadRequestException(
-          'First fill nickname, date of birth, and interests',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'LOCATION_DONE',
+      );
 
       const existingLocation = await this.getUserLocation(userId);
       const isFirstTime = !existingLocation;
@@ -421,6 +343,13 @@ export class AuthService {
       };
     } catch (err) {
       console.error('Error in updateLocation:', err);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+
       throw new InternalServerErrorException(
         `Failed to update location: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
@@ -443,19 +372,11 @@ export class AuthService {
       }
 
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
 
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new BadRequestException(
-          'First fill nickname, date of birth, interests, and location',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'GENDER_DONE',
+      );
 
       const isFirstTime = !userInfo.gender;
 
@@ -512,20 +433,10 @@ export class AuthService {
       }
 
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        !userInfo.gender ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new BadRequestException(
-          'First fill nickname, date of birth, gender, interests, and location',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'GENDER_PREFERENCE_DONE',
+      );
 
       const isFirstTime = !userInfo.genderPreference;
 
@@ -579,21 +490,10 @@ export class AuthService {
       if (!user) throw new NotFoundException('User not found');
 
       const userInfo = await this.getUserInfo(userId);
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-
-      if (
-        !userInfo?.nickName ||
-        !userInfo?.dateOfBirth ||
-        !userInfo?.gender ||
-        !userInfo?.genderPreference ||
-        interests.length === 0 ||
-        !location
-      ) {
-        throw new BadRequestException(
-          'First fill nickname, date of birth, gender, gender preference, interests, and location',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'DISTANCE_PREFERRED_DONE',
+      );
 
       const isFirstTime = userInfo.distancePreferredInKm == null;
 
@@ -757,31 +657,10 @@ export class AuthService {
       const userInfo = await this.getUserInfo(userId);
       if (!userInfo) throw new NotFoundException('User info not found');
 
-      const {
-        nickName,
-        dateOfBirth,
-        gender,
-        genderPreference,
-        distancePreferredInKm,
-      } = userInfo;
-
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-
-      const isProfileIncomplete =
-        !nickName ||
-        !dateOfBirth ||
-        !gender ||
-        !genderPreference ||
-        distancePreferredInKm == null ||
-        interests.length === 0 ||
-        !location;
-
-      if (isProfileIncomplete) {
-        throw new BadRequestException(
-          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, and distance preference are set before proceeding with KYC.',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'KYC_DONE',
+      );
 
       await this.db
         .update(schema.userInfo)
@@ -875,33 +754,10 @@ export class AuthService {
       const userInfo = await this.getUserInfo(userId);
       if (!userInfo) throw new NotFoundException('User info not found');
 
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-
-      const {
-        nickName,
-        dateOfBirth,
-        gender,
-        genderPreference,
-        distancePreferredInKm,
-        candidateId,
-      } = userInfo;
-
-      const isProfileIncomplete =
-        !nickName ||
-        !dateOfBirth ||
-        !gender ||
-        !genderPreference ||
-        distancePreferredInKm == null ||
-        !candidateId ||
-        interests.length === 0 ||
-        !location;
-
-      if (isProfileIncomplete) {
-        throw new BadRequestException(
-          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, distance preference, and KYC (candidateId) are completed before uploading photos.',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'PHOTOS_DONE',
+      );
 
       const existingMedia = await this.db
         .select()
@@ -982,35 +838,10 @@ export class AuthService {
       const userInfo = await this.getUserInfo(userId);
       if (!userInfo) throw new NotFoundException('User info not found');
 
-      const interests = await this.getUserInterests(userId);
-      const location = await this.getUserLocation(userId);
-      const mediaData = await this.getUserMedia(userId);
-
-      const {
-        nickName,
-        dateOfBirth,
-        gender,
-        genderPreference,
-        distancePreferredInKm,
-        candidateId,
-      } = userInfo;
-
-      const isProfileIncomplete =
-        !nickName ||
-        !dateOfBirth ||
-        !gender ||
-        !genderPreference ||
-        !candidateId ||
-        distancePreferredInKm == null ||
-        interests.length === 0 ||
-        !location ||
-        !mediaData;
-
-      if (isProfileIncomplete) {
-        throw new BadRequestException(
-          'User profile is incomplete. Please ensure nickname, DOB, gender, gender preference, interests, location, distance preference, candidateId, and photos are set before updating media preference.',
-        );
-      }
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'MEDIA_PREFERENCE_DONE',
+      );
 
       const existingMedia = await this.db
         .select()
@@ -1034,6 +865,11 @@ export class AuthService {
           userMediaPreference: mediaPreference,
         })
         .where(eq(schema.userInfo.userId, userId));
+
+      await this.db
+        .update(schema.post)
+        .set({ isPublic: true })
+        .where(eq(schema.post.postMediaUrl, mediaUrl));
 
       await this.updateCheckpoint(userId, 'MEDIA_PREFERENCE_DONE');
 
@@ -1064,12 +900,7 @@ export class AuthService {
 
   // Best Image selection and Video Generation using AI will be integrated later
 
-  // private async selectBestImage(photos: string[]) {
-  //   if (!photos || photos.length === 0) {
-  //     throw new BadRequestException('No photos available for selection');
-  //   }
-
-  // }
+  // private async generateAiVideo(image: string) {}
 
   async getVideo(userId: string) {
     try {
@@ -1089,13 +920,42 @@ export class AuthService {
 
       // TODO: Use Google Vision API to select the best image
       // const bestImage = await this.selectBestImage(userPhotos);
-
+      // const bestImage = userPhotos[0];
       // TODO: Integrate with AI video generation service
+
+      // const aiGeneratedVideo = await this.generateAiVideo(bestImage);
+
       const aiVideo =
         'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';
 
       const photoSlideShow =
         'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
+
+      await this.postClient
+        .send(
+          { cmd: 'post-create-post' },
+          {
+            userId,
+            data: {
+              postMediaUrl: aiVideo,
+              postType: 'AiVideo',
+            },
+          },
+        )
+        .toPromise();
+
+      await this.postClient
+        .send(
+          { cmd: 'post-create-post' },
+          {
+            userId,
+            data: {
+              postMediaUrl: photoSlideShow,
+              postType: 'PhotoSlideShow',
+            },
+          },
+        )
+        .toPromise();
 
       const updatedVideos = [...(mediaData.videos || []), aiVideo];
 
@@ -1177,13 +1037,9 @@ export class AuthService {
         .from(schema.userMedia)
         .where(eq(schema.userMedia.userId, userId)),
 
-      this.db
-        .select({ name: schema.userInterests.name })
+      await this.db
+        .select()
         .from(schema.userInterestMapping)
-        .innerJoin(
-          schema.userInterests,
-          eq(schema.userInterestMapping.interestId, schema.userInterests.id),
-        )
         .where(eq(schema.userInterestMapping.userId, userId)),
     ]);
 
@@ -1197,7 +1053,7 @@ export class AuthService {
       loginFormCheckPoint: user.loginFormCheckPoint ?? null,
       photos: media[0]?.photos ?? [],
       videos: media[0]?.videos ?? [],
-      interests: interestsRaw.map((i) => i.name),
+      interests: interestsRaw.map((i) => i.interest),
     };
   }
 }

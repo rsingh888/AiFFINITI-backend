@@ -28,6 +28,15 @@
         "tsConfigPath": "apps/microservice-chat/tsconfig.app.json"
       }
     },
+    "microservice-post": {
+      "type": "application",
+      "root": "apps/microservice-post",
+      "entryFile": "main",
+      "sourceRoot": "apps/microservice-post/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/microservice-post/tsconfig.app.json"
+      }
+    },
     "microservices-auth": {
       "type": "application",
       "root": "apps/microservices-auth",

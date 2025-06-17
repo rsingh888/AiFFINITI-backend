@@ -5,11 +5,24 @@ import { AuthService } from './auth.service';
 import { ConfigModule } from '@nestjs/config';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { DrizzleModule } from 'schema/drizzle.module';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
+    ClientsModule.register([
+      {
+        name: 'POST_SERVICE',
+        transport: Transport.TCP,
+        options: {
+          // host: 'https://affinity-backend-testing-1.onrender.com',
+          // host: 'localhost',
+          port: 3004,
+        },
+      },
+    ]),
     HttpModule,
     SupabaseModule,
     DrizzleModule,

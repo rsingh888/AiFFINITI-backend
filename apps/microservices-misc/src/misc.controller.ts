@@ -15,8 +15,11 @@ export class MicroserviceMiscController {
   }
 
   @MessagePattern({ cmd: 'get-all-matching-profiles' })
-  getAllMatchingProfiles(skip: number, limit: number) {
-    return this.microserviceMiscService.getAllMatchingProfiles(skip, limit);
+  getAllMatchingProfiles(payload: { skip: number; limit: number }) {
+    return this.microserviceMiscService.getAllMatchingProfiles(
+      payload.skip,
+      payload.limit,
+    );
   }
 
   @MessagePattern({ cmd: 'show-profile-view' })

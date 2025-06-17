@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { MicroserviceMiscController } from './misc.controller';
-import { MicroserviceMiscService } from './misc.service';
+import { MicroservicePostController } from './post.controller';
+import { MicroservicePostService } from './post.service';
 import { DrizzleModule } from 'schema/drizzle.module';
 import { ConfigModule } from '@nestjs/config';
 
@@ -11,7 +11,7 @@ import { ConfigModule } from '@nestjs/config';
     }),
     DrizzleModule,
   ],
-  controllers: [MicroserviceMiscController],
-  providers: [MicroserviceMiscService],
+  controllers: [MicroservicePostController],
+  providers: [MicroservicePostService],
 })
-export class MicroserviceMiscModule {}
+export class MicroservicePostModule {}

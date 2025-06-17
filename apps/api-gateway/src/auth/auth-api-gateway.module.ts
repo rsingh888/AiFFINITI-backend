@@ -17,6 +17,16 @@ import { AuthGuard } from '../common/guard/auth.guard';
         },
       },
     ]), // Add other microservices here
+    ClientsModule.register([
+      {
+        name: 'POST_SERVICE',
+        transport: Transport.TCP, // or Transport.RMQ or Transport.REDIS depending on your setup
+        options: {
+          host: 'localhost',
+          port: 3004, // update this as per your post microservice port
+        },
+      },
+    ]),
   ],
   controllers: [AuthApiGatewayController],
   providers: [AuthApiGatewayService, AuthGuard],

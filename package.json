@@ -11,7 +11,7 @@
     "dev:misc": "nest start microservices-misc --watch",
     "dev:chat": "nest start microservice-chat --watch",
     "dev:post": "nest start microservice-post --watch",
-    "dev:all": "concurrently -n gateway,auth,misc,chat,post -c bgMagenta,bgYellow,bgWhite,bgCyan,bgGreen \"npm run dev:dev_api_gateway\" \"npm run dev:dev_auth\" \"npm run dev:dev_misc\" \"npm run dev:dev_chat\" \"npm run start:dev_post\"",
+    "dev:all": "concurrently -n gateway,auth,misc,chat,post -c bgMagenta,bgYellow,bgWhite,bgCyan,bgGreen \"npm run dev:api_gateway\" \"npm run dev:auth\" \"npm run dev:misc\" \"npm run dev:chat\" \"npm run dev:post\"",
     "build": "nest build",
     "build:api_gateway": "nest build",
     "build:auth": "nest build microservices-auth",

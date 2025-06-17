@@ -54,43 +54,43 @@ export class MicroserviceMiscService {
     };
   }
 
-  showProfileView(userId: string, data: { viewedId: string }) {
-    try {
-      const { viewedId } = data;
+  // showProfileView(userId: string, data: { viewedId: string }) {
+  //   try {
+  //     const { viewedId } = data;
 
-      if (!viewedId) {
-        throw new Error('viewedId is required');
-      }
+  //     if (!viewedId) {
+  //       throw new Error('viewedId is required');
+  //     }
 
-      if (viewedId === userId) {
-        return {
-          isSuccess: false,
-          message: 'Cannot view your own profile',
-          data: {},
-        };
-      }
+  //     if (viewedId === userId) {
+  //       return {
+  //         isSuccess: false,
+  //         message: 'Cannot view your own profile',
+  //         data: {},
+  //       };
+  //     }
 
-      // You can insert logic here to track the view in a database if needed
-      // await this.db.insert(...)
+  //     // You can insert logic here to track the view in a database if needed
+  //     // await this.db.insert(...)
 
-      return {
-        isSuccess: true,
-        message: 'Profile view recorded',
-        data: {},
-      };
-    } catch (err: unknown) {
-      console.error('Error in showProfileView:', err);
+  //     return {
+  //       isSuccess: true,
+  //       message: 'Profile view recorded',
+  //       data: {},
+  //     };
+  //   } catch (err: unknown) {
+  //     console.error('Error in showProfileView:', err);
 
-      let errorMessage = 'An unknown error occurred';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
+  //     let errorMessage = 'An unknown error occurred';
+  //     if (err instanceof Error) {
+  //       errorMessage = err.message;
+  //     }
 
-      return {
-        isSuccess: false,
-        message: 'Failed to record profile view',
-        error: errorMessage,
-      };
-    }
-  }
+  //     return {
+  //       isSuccess: false,
+  //       message: 'Failed to record profile view',
+  //       error: errorMessage,
+  //     };
+  //   }
+  // }
 }

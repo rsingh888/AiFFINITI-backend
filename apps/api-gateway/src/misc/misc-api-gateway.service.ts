@@ -17,11 +17,11 @@ export class MiscApiGatewayService {
     );
   }
 
-  showProfileView(userId: string, data: { viewedId: string }) {
-    const { viewedId } = data;
-    return this.miscService.send<string>(
-      { cmd: 'show-profile-view' },
-      { userId, data: { viewedId } },
-    );
-  }
+  // showProfileView(userId: string, data: { viewedId: string }) {
+  //   const { viewedId } = data;
+  //   return this.miscService.send<string>(
+  //     { cmd: 'show-profile-view' },
+  //     { userId, data: { viewedId } },
+  //   );
+  // }
 }

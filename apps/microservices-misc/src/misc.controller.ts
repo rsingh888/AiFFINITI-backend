@@ -1,7 +1,6 @@
 import { Controller } from '@nestjs/common';
 import { MicroserviceMiscService } from './misc.service';
 import { MessagePattern } from '@nestjs/microservices';
-import { showProfileView } from './dto/show-profile-view.dto';
 
 @Controller()
 export class MicroserviceMiscController {
@@ -22,11 +21,11 @@ export class MicroserviceMiscController {
     );
   }
 
-  @MessagePattern({ cmd: 'show-profile-view' })
-  showProfileView(payload: { userId: string; data: showProfileView }) {
-    return this.microserviceMiscService.showProfileView(
-      payload.userId,
-      payload.data,
-    );
-  }
+  // @MessagePattern({ cmd: 'show-profile-view' })
+  // showProfileView(payload: { userId: string; data: showProfileView }) {
+  //   return this.microserviceMiscService.showProfileView(
+  //     payload.userId,
+  //     payload.data,
+  //   );
+  // }
 }

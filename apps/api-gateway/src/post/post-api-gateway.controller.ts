@@ -1,21 +1,21 @@
 import { Body, Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { PostApiGatewayService } from './post-api-gateway.service';
 import { AuthGuard } from '../common/guard/auth.guard';
-import { CreatePostDto } from './dto/create-post.dto';
+// import { CreatePostDto } from './dto/create-post.dto';
 
 @Controller('posts')
 export class PostApiGatewayController {
   constructor(private readonly PostApiGatewayService: PostApiGatewayService) {}
 
-  @UseGuards(AuthGuard)
-  @Post('create-post')
-  postCreatePost(
-    @Req() req: { user: { id: string } },
-    @Body() body: CreatePostDto,
-  ) {
-    const userId = req.user.id;
-    return this.PostApiGatewayService.createPost(userId, body);
-  }
+  // @UseGuards(AuthGuard)
+  // @Post('create-post')
+  // postCreatePost(
+  //   @Req() req: { user: { id: string } },
+  //   @Body() body: CreatePostDto,
+  // ) {
+  //   const userId = req.user.id;
+  //   return this.PostApiGatewayService.createPost(userId, body);
+  // }
 
   @UseGuards(AuthGuard)
   @Post('likes/:postId')

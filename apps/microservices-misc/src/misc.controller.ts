@@ -14,10 +14,13 @@ export class MicroserviceMiscController {
   }
 
   @MessagePattern({ cmd: 'get-all-matching-profiles' })
-  getAllMatchingProfiles(payload: { skip: number; limit: number }) {
+  getAllMatchingProfiles(payload: {
+    userId: string;
+    data: { skip: number; limit: number };
+  }) {
     return this.microserviceMiscService.getAllMatchingProfiles(
-      payload.skip,
-      payload.limit,
+      payload.userId,
+      payload.data,
     );
   }
 

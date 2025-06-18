@@ -9,11 +9,15 @@ export class MiscApiGatewayService {
     return this.miscService.send<string[]>({ cmd: 'get-all-interests' }, {});
   }
 
-  getAllMatchingProfiles(page: number, limit: number) {
+  getAllMatchingProfiles(
+    userId: string,
+    data: { page: number; limit: number },
+  ) {
+    const { page, limit } = data;
     const skip = (page - 1) * limit;
     return this.miscService.send<string>(
       { cmd: 'get-all-matching-profiles' },
-      { skip, limit },
+      { userId, data: { skip, limit } },
     );
   }
 

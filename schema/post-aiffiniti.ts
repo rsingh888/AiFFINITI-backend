@@ -9,7 +9,7 @@ import { post } from './post';
 import { user } from './user';
 
 export const postAiffinities = pgTable(
-  'post-affinities',
+  'post-aiffinities',
   {
     postId: uuid('post-id')
       .notNull()

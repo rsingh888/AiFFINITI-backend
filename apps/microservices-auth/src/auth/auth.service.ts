@@ -13,6 +13,32 @@ import { SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
+import { connect as mqttConnect, MqttClient } from 'mqtt';
+
+interface MqttSettings {
+  mqtt_host: string;
+  mqtt_port: number;
+  mqtt_topic: string;
+}
+
+interface SettingsResponse {
+  data: MqttSettings;
+}
+
+interface GenerationResponse {
+  data: {
+    generation_id: string;
+  };
+}
+
+interface MqttMessage {
+  action?: 'progress' | 'complete';
+  data?: {
+    generation_id?: string;
+    message?: string;
+    url?: string;
+  };
+}
 
 @Injectable()
 export class AuthService {
@@ -563,90 +589,6 @@ export class AuthService {
   //     throw new Error('Failed to create liveness session or missing sessionId');
   //   }
 
-  //   const sessionId: string = response.data.sessionId;
-  //   // const url = `https://liveness.biopassid.com/session/${sessionId}`;
-
-  //   return { sessionId }; // frontend will open this URL
-  // }
-
-  // KYC Update
-  // private async getLivenessImage(sessionId: string) {
-  //   try {
-  //     const res = await this.httpService
-  //       .get(`${this.biopassApiUrl}/liveness/session/${sessionId}`, {
-  //         headers: {
-  //           'BIOPASS-API-KEY': this.biopassKey,
-  //         },
-  //       })
-  //       .toPromise();
-
-  //     if (!res) {
-  //       throw new Error('No response received from liveness session API');
-  //     }
-
-  //     return res.data as imageResponse;
-  //   } catch (err) {
-  //     if (err instanceof Error) {
-  //       throw new Error(`Failed to get liveness image: ${err.message}`);
-  //     } else {
-  //       throw new Error('Failed to get liveness image: Unknown error');
-  //     }
-  //   }
-  // }
-
-  // private async enrollUserInBioPass(
-  //   userId: string,
-  //   fileName: string,
-  //   base64: string,
-  // ): Promise<EnrollResponse> {
-  //   const payload = {
-  //     Candidate: {
-  //       GalleryNames: ['your-gallery'],
-  //       CustomId: userId,
-  //       EnrollWithDeduplication: true,
-  //       BiographicData: {
-  //         Nome: 'FromDBOrForm',
-  //         Cpf: '123.456.789-00',
-  //         DataDeNascimento: '1990-01-01',
-  //         NomeDaMae: 'Mother',
-  //         NomeDoPai: 'Father',
-  //         Gender: 'Male',
-  //         Signature: {
-  //           ImageFileName: '',
-  //           ImageBase64: '',
-  //         },
-  //         CaptureDateUtc: new Date().toISOString().split('T')[0],
-  //       },
-  //       Face: {
-  //         Face: [
-  //           {
-  //             ImageFileName: fileName,
-  //             ImageBase64: base64,
-  //             HorzResolution: 300,
-  //             VertResolution: 300,
-  //           },
-  //         ],
-  //       },
-  //     },
-  //     PriorityOrder: 0,
-  //     DelayOrder: 0,
-  //   };
-
-  //   const res = await this.httpService
-  //     .post(`${this.biopassApiUrl}/enroll/create`, payload, {
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //         'BIOPASS-API-KEY': this.biopassKey,
-  //       },
-  //     })
-  //     .toPromise();
-
-  //   if (!res) {
-  //     throw new Error('No response received from BioPass API');
-  //   }
-  //   return res.data as EnrollResponse;
-  // }
-
   async updateKyc(userId: string) {
     try {
       // Placeholder for actual BioPass integration
@@ -901,7 +843,98 @@ export class AuthService {
 
   // Best Image selection and Video Generation using AI will be integrated later
 
-  // private async generateAiVideo(image: string) {}
+  private async generateAiVideo(image: string): Promise<string> {
+    try {
+      const settingsRes = await this.httpService
+        .get<SettingsResponse>(`${this.stockmafiaApi}settings`, {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'X-API-KEY': this.xApiKey,
+          },
+        })
+        .toPromise();
+
+      if (!settingsRes?.data?.data) {
+        throw new Error('Failed to fetch MQTT settings from API');
+      }
+
+      const {
+        mqtt_host: mqttHost,
+        mqtt_port: mqttPort,
+        mqtt_topic: mqttTopic,
+      } = settingsRes.data.data;
+
+      const generationRes = await this.httpService
+        .post<GenerationResponse>(
+          `${this.stockmafiaApi}media-generations`,
+          { image },
+          {
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'X-API-KEY': this.xApiKey,
+            },
+          },
+        )
+        .toPromise();
+
+      const generationId = generationRes?.data?.data?.generation_id;
+      if (!generationId) {
+        throw new Error('No generation_id returned from media-generations API');
+      }
+
+      return await new Promise<string>((resolve, reject) => {
+        const client: MqttClient = mqttConnect(
+          `mqtt://${mqttHost}:${mqttPort}`,
+        );
+
+        const timeout = setTimeout(() => {
+          client.end();
+          reject(new Error('Timeout: No video generated within 60 seconds'));
+        }, 60000);
+
+        client.on('connect', () => {
+          client.subscribe(mqttTopic, (err) => {
+            if (err) {
+              clearTimeout(timeout);
+              client.end();
+              reject(new Error('Failed to subscribe to MQTT topic'));
+            }
+          });
+        });
+
+        client.on('message', (topic, message) => {
+          try {
+            const payload = JSON.parse(
+              message.toString(),
+            ) as unknown as MqttMessage;
+
+            if (
+              payload.action === 'complete' &&
+              payload.data?.generation_id === generationId &&
+              payload.data?.url
+            ) {
+              clearTimeout(timeout);
+              client.end();
+              resolve(payload.data.url);
+            }
+          } catch (err) {
+            console.error('Error parsing MQTT message:', err);
+          }
+        });
+
+        client.on('error', (err) => {
+          clearTimeout(timeout);
+          client.end();
+          reject(err);
+        });
+      });
+    } catch (error) {
+      console.error('Video generation error:', error);
+      throw new InternalServerErrorException(
+        `Failed to generate video: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
 
   async getVideo(userId: string) {
     try {
@@ -923,8 +956,6 @@ export class AuthService {
       // const bestImage = await this.selectBestImage(userPhotos);
       // const bestImage = userPhotos[0];
       // TODO: Integrate with AI video generation service
-
-      // const aiGeneratedVideo = await this.generateAiVideo(bestImage);
 
       const aiVideo =
         'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';

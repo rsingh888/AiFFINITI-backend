@@ -940,6 +940,8 @@ export class AuthService {
     try {
       const mediaData = await this.getUserMedia(userId);
 
+      console.log('Get video Called');
+
       if (!mediaData) {
         throw new NotFoundException('No media found for this user.');
       }
@@ -963,6 +965,8 @@ export class AuthService {
       const photoSlideShow =
         'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
 
+      console.log('Creating Post 1');
+
       await this.postClient
         .send(
           { cmd: 'post-create-post' },
@@ -975,6 +979,8 @@ export class AuthService {
           },
         )
         .toPromise();
+
+      console.log('Creating Post 1');
 
       await this.postClient
         .send(
@@ -991,12 +997,18 @@ export class AuthService {
 
       const updatedVideos = [...(mediaData.videos || []), aiVideo];
 
+      console.log('updating in db');
+
       await this.db
         .update(schema.userMedia)
         .set({ videos: updatedVideos })
         .where(eq(schema.userMedia.userId, userId));
 
+      console.log('Processing done, updating checkpoint');
+
       await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
+
+      console.log('Checkpoint updated');
 
       const [user] = await this.db
         .select()

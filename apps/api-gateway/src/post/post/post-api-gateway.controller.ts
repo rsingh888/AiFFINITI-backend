@@ -1,6 +1,6 @@
 import { Body, Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { PostApiGatewayService } from './post-api-gateway.service';
-import { AuthGuard } from '../common/guard/auth.guard';
+import { AuthGuard } from '../../common/guard/auth.guard';
 // import { CreatePostDto } from './dto/create-post.dto';
 
 @Controller('posts')

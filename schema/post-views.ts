@@ -5,6 +5,7 @@ import { post } from './post';
 export const postViews = pgTable(
   'post-views',
   {
+    id: uuid('id').primaryKey().defaultRandom(),
     postId: uuid('post-id')
       .notNull()
       .references(() => post.postId, { onDelete: 'cascade' }),

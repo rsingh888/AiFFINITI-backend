@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   BadRequestException,
   Inject,
@@ -6,6 +8,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import * as ffmpeg from 'fluent-ffmpeg';
 import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
@@ -13,36 +16,45 @@ import { SupabaseClient, User } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
-import { connect as mqttConnect, MqttClient } from 'mqtt';
+// import { connect as mqttConnect, MqttClient } from 'mqtt';
+import { BestImageService } from './best-image/best-image.service';
+import * as FormData from 'form-data';
+// import * as streamifier from 'streamifier';
+import * as sharp from 'sharp';
+import { tmpdir } from 'os';
+import { writeFileSync, existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
-interface MqttSettings {
-  mqtt_host: string;
-  mqtt_port: number;
-  mqtt_topic: string;
-}
+// interface MqttSettings {
+//   mqtt_host: string;
+//   mqtt_port: number;
+//   mqtt_topic: string;
+// }
 
-interface SettingsResponse {
-  data: MqttSettings;
-}
+// interface SettingsResponse {
+//   data: MqttSettings;
+// }
 
-interface GenerationResponse {
-  data: {
-    generation_id: string;
-  };
-}
+// interface GenerationResponse {
+//   data: {
+//     generation_id: string;
+//   };
+// }
 
-interface MqttMessage {
-  action?: 'progress' | 'complete';
-  data?: {
-    generation_id?: string;
-    message?: string;
-    url?: string;
-  };
-}
+// interface MqttMessage {
+//   action?: 'progress' | 'complete';
+//   data?: {
+//     generation_id?: string;
+//     message?: string;
+//     url?: string;
+//   };
+// }
 
 @Injectable()
 export class AuthService {
   constructor(
+    private bestImageService: BestImageService,
     private configService: ConfigService,
     private readonly httpService: HttpService,
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
@@ -565,30 +577,6 @@ export class AuthService {
     }
   }
 
-  // async createId(userId: string) {
-  //   const response = await this.httpService
-  //     .post<{ sessionId: string }>(
-  //       'https://api.biopassid.com/v1/liveness/session',
-  //       {
-  //         settings: {
-  //           // Optional: configure settings if needed
-  //           challengeType: 'PASSIVE', // or 'ACTIVE'
-  //           locale: 'en',
-  //         },
-  //       },
-  //       {
-  //         headers: {
-  //           Authorization: `Bearer ${this.biopassKey}`,
-  //           'Content-Type': 'application/json',
-  //         },
-  //       },
-  //     )
-  //     .toPromise();
-
-  //   if (!response || !response.data || !response.data.sessionId) {
-  //     throw new Error('Failed to create liveness session or missing sessionId');
-  //   }
-
   async updateKyc(userId: string) {
     try {
       // Placeholder for actual BioPass integration
@@ -633,59 +621,6 @@ export class AuthService {
       );
     }
   }
-
-  // photos Update  and Verify Photos
-
-  // async verifyPhotos(userId: string, data: { photos: string[] }) {
-  //   try {
-  //     const { photos } = data;
-
-  //     if (!photos) {
-  //       throw new Error('Minimum 1 photos are required for verification');
-  //     }
-
-  //     const userInfo = await this.db
-  //       .select()
-  //       .from(schema.userInfo)
-  //       .where(eq(schema.userInfo.userId, userId))
-  //       .limit(1);
-
-  //     if (userInfo.length === 0 || !userInfo[0].candidateId) {
-  //       throw new Error('Candidate ID not found for user');
-  //     }
-
-  //     const candidateId = userInfo[0].candidateId;
-
-  //     for (const photoBase64 of photos) {
-  //       const verifyPayload = {
-  //         CandidateId: candidateId,
-  //         ImageBase64: photoBase64,
-  //       };
-
-  //       const verifyRes = await this.httpService
-  //         .post<{ MatchSuccess: boolean }>(
-  //           `${this.biopassApiUrl}/face/verify/1to1`,
-  //           verifyPayload,
-  //           {
-  //             headers: {
-  //               'Content-Type': 'application/json',
-  //               'BIOPASS-API-KEY': this.biopassKey,
-  //             },
-  //           },
-  //         )
-  //         .toPromise();
-
-  //       if (!verifyRes?.data?.MatchSuccess) {
-  //         throw new Error('Face verification failed for one or more photos');
-  //       }
-  //     }
-
-  //     return { success: true, message: 'All photos verified successfully' };
-  //   } catch (err) {
-  //     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-  //     throw new Error(`Photo verification failed: ${errorMessage}`);
-  //   }
-  // }
 
   async updatePhotos(userId: string, data: { photos?: string[] }) {
     try {
@@ -842,99 +777,266 @@ export class AuthService {
   }
 
   // Best Image selection and Video Generation using AI will be integrated later
+  // async selectBestImage(photos: string[]) {}
 
-  private async generateAiVideo(image: string): Promise<string> {
-    try {
-      const settingsRes = await this.httpService
-        .get<SettingsResponse>(`${this.stockmafiaApi}settings`, {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'X-API-KEY': this.xApiKey,
-          },
-        })
-        .toPromise();
+  private async uploadVideoToSupabase(
+    videoPath: string,
+    userId: string,
+  ): Promise<string> {
+    const bucket = 'user-videos';
+    const filename = `${userId}-${Date.now()}.mp4`;
+    const fileBuffer = readFileSync(videoPath);
 
-      if (!settingsRes?.data?.data) {
-        throw new Error('Failed to fetch MQTT settings from API');
-      }
-
-      const {
-        mqtt_host: mqttHost,
-        mqtt_port: mqttPort,
-        mqtt_topic: mqttTopic,
-      } = settingsRes.data.data;
-
-      const generationRes = await this.httpService
-        .post<GenerationResponse>(
-          `${this.stockmafiaApi}media-generations`,
-          { image },
-          {
-            headers: {
-              Authorization: `Bearer ${this.accessToken}`,
-              'X-API-KEY': this.xApiKey,
-            },
-          },
-        )
-        .toPromise();
-
-      const generationId = generationRes?.data?.data?.generation_id;
-      if (!generationId) {
-        throw new Error('No generation_id returned from media-generations API');
-      }
-
-      return await new Promise<string>((resolve, reject) => {
-        const client: MqttClient = mqttConnect(
-          `mqtt://${mqttHost}:${mqttPort}`,
-        );
-
-        const timeout = setTimeout(() => {
-          client.end();
-          reject(new Error('Timeout: No video generated within 60 seconds'));
-        }, 60000);
-
-        client.on('connect', () => {
-          client.subscribe(mqttTopic, (err) => {
-            if (err) {
-              clearTimeout(timeout);
-              client.end();
-              reject(new Error('Failed to subscribe to MQTT topic'));
-            }
-          });
-        });
-
-        client.on('message', (topic, message) => {
-          try {
-            const payload = JSON.parse(
-              message.toString(),
-            ) as unknown as MqttMessage;
-
-            if (
-              payload.action === 'complete' &&
-              payload.data?.generation_id === generationId &&
-              payload.data?.url
-            ) {
-              clearTimeout(timeout);
-              client.end();
-              resolve(payload.data.url);
-            }
-          } catch (err) {
-            console.error('Error parsing MQTT message:', err);
-          }
-        });
-
-        client.on('error', (err) => {
-          clearTimeout(timeout);
-          client.end();
-          reject(err);
-        });
+    const { error } = await this.supabase.storage
+      .from(bucket)
+      .upload(filename, fileBuffer, {
+        contentType: 'video/mp4',
+        upsert: true,
       });
-    } catch (error) {
-      console.error('Video generation error:', error);
-      throw new InternalServerErrorException(
-        `Failed to generate video: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
+
+    if (error) {
+      console.error('Upload failed:', error.message);
+      throw new InternalServerErrorException('Video upload failed');
+    }
+
+    const { data } = this.supabase.storage.from(bucket).getPublicUrl(filename);
+    return data.publicUrl;
+  }
+
+  async getSlideShow(images: string[]): Promise<string> {
+    const jobId = uuidv4();
+    const jobDir = join(tmpdir(), `slideshow-${jobId}`);
+    const inputTxtPath = join(jobDir, 'input.txt');
+    const outputVideoPath = join(jobDir, 'output.mp4');
+
+    try {
+      if (!existsSync(jobDir)) mkdirSync(jobDir);
+      const normalizedImagePaths: string[] = [];
+
+      for (let i = 0; i < images.length; i++) {
+        const imageUrl = images[i];
+        const localPath = join(jobDir, `img-${i}.jpg`);
+        const response = (await this.httpService.axiosRef.get(imageUrl, {
+          responseType: 'arraybuffer',
+        })) as { data: ArrayBuffer };
+
+        const imageBuffer = Buffer.from(response.data);
+        await sharp(imageBuffer).jpeg().toFile(localPath);
+        normalizedImagePaths.push(localPath);
+      }
+
+      let ffmpegInput = '';
+      for (let i = 0; i < normalizedImagePaths.length; i++) {
+        ffmpegInput += `file '${normalizedImagePaths[i]}'\n`;
+        // Add duration for all except the last image
+        if (i < normalizedImagePaths.length) {
+          ffmpegInput += `duration 2\n`;
+        }
+      }
+      // Repeat last image once (required)
+      ffmpegInput += `file '${normalizedImagePaths[normalizedImagePaths.length - 1]}'`;
+
+      writeFileSync(inputTxtPath, ffmpegInput);
+
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg()
+          .input(inputTxtPath)
+          .inputFormat('concat')
+          .inputOptions('-safe 0')
+          .outputOptions(['-vf scale=1280:720', '-pix_fmt yuv420p', '-r 25'])
+          .on('end', resolve)
+          .on('error', (err) =>
+            reject(new Error('FFmpeg error: ' + err.message)),
+          )
+          .output(outputVideoPath)
+          .run();
+      });
+
+      return outputVideoPath;
+    } catch (err) {
+      console.error('Slideshow generation failed:', err);
+      throw new InternalServerErrorException('Failed to generate slideshow');
     }
   }
+
+  private cleanupJobFolder(videoPath: string): void {
+    try {
+      const jobDir = videoPath.split('/output.mp4')[0];
+      if (existsSync(jobDir)) {
+        rmSync(jobDir, { recursive: true, force: true });
+        console.log('Temp job folder cleaned:', jobDir);
+      }
+    } catch (err) {
+      console.warn('Failed to clean job folder:', err);
+    }
+  }
+
+  // private async generateAiVideo(
+  //   imageUrl: string,
+  // ): Promise<{ videoUrl: string; progress: string[] }> {
+  //   try {
+  //     // Fetch settings
+  //     const settingsRes = await (this.httpService
+  //       .get<SettingsResponse>(`${this.stockmafiaApi}settings`, {
+  //         headers: {
+  //           Authorization: `Bearer ${this.accessToken}`,
+  //           'X-API-KEY': this.xApiKey,
+  //         },
+  //       })
+  //       .toPromise() as Promise<{ data: SettingsResponse }>);
+
+  //     const {
+  //       mqtt_host: mqttHost,
+  //       mqtt_port: mqttPort,
+  //       mqtt_topic: mqttTopic,
+  //     } = settingsRes.data.data;
+
+  //     // Download image as buffer
+  //     const imageRes = (await this.httpService.axiosRef.get<ArrayBuffer>(
+  //       imageUrl,
+  //       {
+  //         responseType: 'arraybuffer',
+  //       },
+  //     )) as { data: ArrayBuffer };
+  //     const imageBuffer = Buffer.from(imageRes.data);
+
+  //     // Construct form data with file upload
+  //     const formData = new FormData();
+  //     formData.append('image', streamifier.createReadStream(imageBuffer), {
+  //       filename: 'image.jpg',
+  //       contentType: 'image/jpeg',
+  //     });
+
+  //     const generationRes =
+  //       await (this.httpService.axiosRef.post<GenerationResponse>(
+  //         `${this.stockmafiaApi}media-generations`,
+  //         formData,
+  //         {
+  //           headers: {
+  //             Authorization: `Bearer ${this.accessToken}`,
+  //             'X-API-KEY': this.xApiKey,
+  //             ...formData.getHeaders(),
+  //           },
+  //         },
+  //       ) as Promise<{ data: GenerationResponse }>);
+
+  //     const generationId = generationRes?.data?.data?.generation_id;
+  //     if (!generationId) {
+  //       throw new Error('No generation_id returned from media-generations API');
+  //     }
+
+  //     // Wait for MQTT complete event...
+  //     return await new Promise<{ videoUrl: string; progress: string[] }>(
+  //       (resolve, reject) => {
+  //         const client: MqttClient = mqttConnect(
+  //           `mqtt://${mqttHost}:${mqttPort}`,
+  //         );
+
+  //         const progressUpdates: string[] = [];
+
+  //         const timeout = setTimeout(() => {
+  //           client.end();
+  //           reject(new Error('Timeout: No video generated within 300 seconds'));
+  //         }, 300000);
+
+  //         client.on('connect', () => {
+  //           client.subscribe(mqttTopic, (err) => {
+  //             if (err) {
+  //               clearTimeout(timeout);
+  //               client.end();
+  //               reject(new Error('Failed to subscribe to MQTT topic'));
+  //             }
+  //           });
+  //         });
+
+  //         client.on('message', (topic, message) => {
+  //           try {
+  //             const payload = JSON.parse(message.toString()) as MqttMessage;
+  //             if (payload.data?.generation_id === generationId) {
+  //               if (payload.action === 'progress' && payload.data?.message) {
+  //                 console.log(`Progress: ${payload.data.message}`);
+  //                 progressUpdates.push(payload.data.message);
+  //               }
+
+  //               if (payload.action === 'complete' && payload.data?.url) {
+  //                 clearTimeout(timeout);
+  //                 client.end();
+  //                 return resolve({
+  //                   videoUrl: payload.data.url,
+  //                   progress: progressUpdates,
+  //                 });
+  //               }
+  //             }
+  //           } catch (err) {
+  //             console.error('Error parsing MQTT message:', err);
+  //           }
+  //         });
+
+  //         client.on('error', (err) => {
+  //           clearTimeout(timeout);
+  //           client.end();
+  //           reject(err);
+  //         });
+  //       },
+  //     );
+  //   } catch (error: unknown) {
+  //     if (this.httpService.axiosRef.isAxiosError(error)) {
+  //       let status: number | undefined;
+  //       let message: string = 'Unknown Axios error';
+  //       let responseData: any;
+
+  //       if (
+  //         typeof error === 'object' &&
+  //         error !== null &&
+  //         'response' in error &&
+  //         typeof (error as { response?: unknown }).response === 'object' &&
+  //         (error as { response?: unknown }).response !== null
+  //       ) {
+  //         const response = (
+  //           error as { response?: { status?: number; data?: unknown } }
+  //         ).response;
+  //         status = response?.status;
+  //         if (response && typeof response === 'object' && 'data' in response) {
+  //           responseData = (response as { data?: unknown }).data;
+  //         }
+  //         if (
+  //           responseData &&
+  //           typeof responseData === 'object' &&
+  //           'message' in responseData &&
+  //           typeof (responseData as { message?: unknown }).message === 'string'
+  //         ) {
+  //           message = (responseData as { message: string }).message;
+  //         }
+  //       }
+
+  //       console.error('Axios Error:', status, message, responseData);
+
+  //       throw new InternalServerErrorException(
+  //         `Failed to generate video: ${message}`,
+  //       );
+  //     }
+
+  //     // For non-Axios errors (e.g., runtime issues)
+  //     if (error instanceof Error) {
+  //       console.error('Non-Axios Error:', error.message);
+  //       throw new InternalServerErrorException(
+  //         `Failed to generate video: ${error.message}`,
+  //       );
+  //     } else {
+  //       // Handle unknown error type safely
+  //       console.error('Non-Axios Error (unknown type):', error);
+  //       throw new InternalServerErrorException(
+  //         `Failed to generate video: ${typeof error === 'string' ? error : 'Unknown error'}`,
+  //       );
+  //     }
+
+  //     // Fallback if error is truly unknown
+  //     console.error('Unexpected Error:', error);
+  //     throw new InternalServerErrorException(
+  //       'Failed to generate video: Unknown error',
+  //     );
+  //   }
+  // }
 
   async getVideo(userId: string) {
     try {
@@ -954,16 +1056,34 @@ export class AuthService {
         );
       }
 
-      // TODO: Use Google Vision API to select the best image
-      // const bestImage = await this.selectBestImage(userPhotos);
-      // const bestImage = userPhotos[0];
+      // const userImage = await this.bestImageService.selectBestImage(userPhotos);
+      // console.log('user-image', userImage);
+      // if (!userImage || userImage.length === 0) {
+      //   throw new BadRequestException('No best image could be selected.');
+      // }
+      // const bestImage = this.convertToDirectImageUrl(userImage);
+      // console.log('bestimage', bestImage);
       // TODO: Integrate with AI video generation service
+
+      // const aiVideo = await this.generateAiVideo(
+      //   'https://images.pexels.com/photos/2104252/pexels-photo-2104252.jpeg',
+      // );
+      // console.log('aivideo', aiVideo);
+
+      const videoPath = await this.getSlideShow(userPhotos);
+
+      const photoSlideShow = await this.uploadVideoToSupabase(
+        videoPath,
+        userId,
+      );
+
+      this.cleanupJobFolder(videoPath);
 
       const aiVideo =
         'https://drive.google.com/file/d/1BxTbeqXf56cTa1B5x8OfaplD9s_Vw9Yg/view?usp=drivesdk';
 
-      const photoSlideShow =
-        'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
+      // const photoSlideShow =
+      //   'https://drive.google.com/file/d/1NSlIVGqSLP4uOITpsRhjzkHdexP_iE7G/view?usp=sharing';
 
       console.log('Creating Post 1');
 
@@ -1023,6 +1143,7 @@ export class AuthService {
         isSuccess: true,
         data: {
           checkPoint: user.loginFormCheckPoint,
+          hasProcessed: true,
           aiVideo,
           photoSlideShow,
         },

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { PostApiGatewayController } from './post-api-gateway.controller';
 import { PostApiGatewayService } from './post-api-gateway.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { AuthGuard } from '../common/guard/auth.guard';
+import { AuthGuard } from '../../common/guard/auth.guard';
 @Module({
   imports: [
     ClientsModule.register([

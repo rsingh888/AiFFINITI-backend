@@ -9,7 +9,9 @@
         "smembers",
         "srem",
         "stockmafia",
+        "streamifier",
         "Supabase",
-        "unliked"
+        "unliked",
+        "uuidv"
     ]
 }

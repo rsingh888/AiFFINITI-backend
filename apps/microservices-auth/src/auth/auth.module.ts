@@ -6,11 +6,14 @@ import { ConfigModule } from '@nestjs/config';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { DrizzleModule } from 'schema/drizzle.module';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { BestImageModule } from './best-image/best-image.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
+    BestImageModule,
 
     ClientsModule.register([
       {

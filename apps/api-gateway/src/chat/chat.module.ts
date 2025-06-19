@@ -26,5 +26,6 @@ import { ConfigModule } from '@nestjs/config';
   ],
   controllers: [ChatController],
   providers: [ChatApiGatewayService, AuthGuard],
+  exports: [ChatApiGatewayService],
 })
 export class ChatModule {}

@@ -14,4 +14,4 @@ import { ConfigModule } from '@nestjs/config';
   controllers: [MicroservicePostController],
   providers: [MicroservicePostService],
 })
-export class MicroservicePostModule {}
+export class PostModule {}

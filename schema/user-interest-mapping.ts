@@ -1,4 +1,4 @@
-import { pgTable, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar } from 'drizzle-orm/pg-core';
 import { user } from './user';
 
 export const allInterest = [
@@ -28,6 +28,7 @@ export const allInterest = [
 ];
 
 export const userInterestMapping = pgTable('interest-mapping', {
+  id: uuid('id').primaryKey().defaultRandom(),
   userId: varchar('user-id', { length: 255 })
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),

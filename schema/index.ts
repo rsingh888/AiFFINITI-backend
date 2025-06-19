@@ -9,6 +9,7 @@ import { postLikes } from './post-likes';
 import { postViews } from './post-views';
 import { post } from './post';
 import { postAiffinities } from './post-aiffiniti';
+import { connectionRequest } from './connection-request';
 
 export const schema = {
   user,
@@ -28,4 +29,5 @@ export const schema = {
   postViews,
   post,
   postAiffinities,
+  connectionRequest,
 };

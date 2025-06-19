@@ -5,8 +5,8 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { schema } from '../../../schema/index';
-import { and, eq, sql } from 'drizzle-orm';
+import { schema } from '../../../../schema/index';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { CreatePostDto, PostType } from './dto/create-post.dto';
 
 @Injectable()
@@ -76,9 +76,18 @@ export class MicroservicePostService {
         );
 
       const isLiked = alreadyLiked.length > 0;
+      const [post] = await this.db
+        .select({ ownerId: schema.post.userId })
+        .from(schema.post)
+        .where(eq(schema.post.postId, postId));
+
+      if (!post) {
+        throw new BadRequestException('Post not found');
+      }
+
+      const isSelf = post.ownerId === userId;
 
       if (isLiked) {
-        //  UNLIKE
         await this.db
           .delete(schema.postLikes)
           .where(
@@ -87,11 +96,51 @@ export class MicroservicePostService {
               eq(schema.postLikes.userId, userId),
             ),
           );
+
+        if (!isSelf) {
+          await this.db
+            .delete(schema.connectionRequest)
+            .where(
+              and(
+                eq(schema.connectionRequest.requesterId, userId),
+                eq(schema.connectionRequest.receiverId, post.ownerId),
+                eq(schema.connectionRequest.status, 'pending'),
+                eq(schema.connectionRequest.type, 'like'),
+              ),
+            );
+        }
       } else {
-        // Like
         await this.db.insert(schema.postLikes).values({ postId, userId });
+
+        if (!isSelf) {
+          const existingConnection = await this.db
+            .select()
+            .from(schema.connectionRequest)
+            .where(
+              and(
+                eq(schema.connectionRequest.requesterId, userId),
+                eq(schema.connectionRequest.receiverId, post.ownerId),
+                or(
+                  and(
+                    eq(schema.connectionRequest.type, 'like'),
+                    eq(schema.connectionRequest.status, 'pending'),
+                  ),
+                  eq(schema.connectionRequest.status, 'accepted'),
+                ),
+              ),
+            );
+
+          if (existingConnection.length === 0) {
+            await this.db.insert(schema.connectionRequest).values({
+              requesterId: userId,
+              receiverId: post.ownerId,
+              type: 'like',
+            });
+          }
+        }
       }
 
+      //  return  count
       const [{ count }] = await this.db
         .select({ count: sql<number>`COUNT(*)` })
         .from(schema.postLikes)
@@ -99,9 +148,7 @@ export class MicroservicePostService {
 
       return {
         isSuccess: true,
-        message: isLiked
-          ? 'Post unliked successfully'
-          : 'Post liked successfully',
+        message: isLiked ? 'Post unliked' : 'Post liked',
         data: {
           status: isLiked ? 'unliked' : 'liked',
           totalLikes: count,
@@ -133,10 +180,21 @@ export class MicroservicePostService {
           ),
         );
 
-      const isAffiniti = alreadyAiffiniti.length > 0;
+      const isAiffiniti = alreadyAiffiniti.length > 0;
 
-      if (isAffiniti) {
-        // Remove affinity
+      const [post] = await this.db
+        .select({ ownerId: schema.post.userId })
+        .from(schema.post)
+        .where(eq(schema.post.postId, postId));
+
+      if (!post) {
+        throw new BadRequestException('Post not found');
+      }
+
+      const isSelf = post.ownerId === userId;
+
+      if (isAiffiniti) {
+        // Remove aiffiniti
         await this.db
           .delete(schema.postAiffinities)
           .where(
@@ -145,12 +203,52 @@ export class MicroservicePostService {
               eq(schema.postAiffinities.userId, userId),
             ),
           );
+
+        if (!isSelf) {
+          await this.db
+            .delete(schema.connectionRequest)
+            .where(
+              and(
+                eq(schema.connectionRequest.requesterId, userId),
+                eq(schema.connectionRequest.receiverId, post.ownerId),
+                eq(schema.connectionRequest.status, 'pending'),
+                eq(schema.connectionRequest.type, 'aiffiniti'),
+              ),
+            );
+        }
       } else {
-        // Add affinity
+        // Add aiffiniti
         await this.db.insert(schema.postAiffinities).values({ postId, userId });
+
+        if (!isSelf) {
+          const existingConnection = await this.db
+            .select()
+            .from(schema.connectionRequest)
+            .where(
+              and(
+                eq(schema.connectionRequest.requesterId, userId),
+                eq(schema.connectionRequest.receiverId, post.ownerId),
+                or(
+                  and(
+                    eq(schema.connectionRequest.type, 'aiffiniti'),
+                    eq(schema.connectionRequest.status, 'pending'),
+                  ),
+                  eq(schema.connectionRequest.status, 'accepted'),
+                ),
+              ),
+            );
+
+          if (existingConnection.length === 0) {
+            await this.db.insert(schema.connectionRequest).values({
+              requesterId: userId,
+              receiverId: post.ownerId,
+              type: 'aiffiniti',
+            });
+          }
+        }
       }
 
-      // Get updated count
+      //  Always return correct count
       const [{ count }] = await this.db
         .select({ count: sql<number>`COUNT(*)` })
         .from(schema.postAiffinities)
@@ -158,9 +256,9 @@ export class MicroservicePostService {
 
       return {
         isSuccess: true,
-        message: isAffiniti ? 'Affinity removed' : 'Affinity added',
+        message: isAiffiniti ? 'Aiffiniti removed' : 'Aiffiniti added',
         data: {
-          status: isAffiniti ? 'aiffiniti-removed' : 'aiffiniti-added',
+          status: isAiffiniti ? 'aiffiniti-removed' : 'aiffiniti-added',
           totalAiffiniti: count,
         },
       };

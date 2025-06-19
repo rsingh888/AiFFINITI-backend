@@ -14,7 +14,7 @@ export class ConnectionRequestService {
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
-  async likeConnectionRequest(userId: string) {
+  async getPendingLikeConnectionRequest(userId: string) {
     try {
       const likeRequests = await this.db
         .select({
@@ -46,7 +46,7 @@ export class ConnectionRequestService {
     }
   }
 
-  async aiffinitiConnectionRequest(userId: string) {
+  async getPendingAiffinitiConnectionRequest(userId: string) {
     try {
       const aiffinitiRequests = await this.db
         .select({
@@ -59,6 +59,7 @@ export class ConnectionRequestService {
           and(
             eq(schema.connectionRequest.receiverId, userId),
             eq(schema.connectionRequest.type, 'aiffiniti'),
+            eq(schema.connectionRequest.status, 'pending'),
           ),
         );
 
@@ -107,6 +108,7 @@ export class ConnectionRequestService {
           and(
             eq(schema.connectionRequest.requesterId, requesterId),
             eq(schema.connectionRequest.receiverId, userId),
+            eq(schema.connectionRequest.status, 'pending'),
             eq(schema.connectionRequest.type, type),
           ),
         );
@@ -172,6 +174,7 @@ export class ConnectionRequestService {
           and(
             eq(schema.connectionRequest.requesterId, requesterId),
             eq(schema.connectionRequest.receiverId, userId),
+            eq(schema.connectionRequest.status, 'pending'),
             eq(schema.connectionRequest.type, type),
           ),
         );

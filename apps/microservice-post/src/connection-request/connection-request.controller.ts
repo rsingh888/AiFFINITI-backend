@@ -12,12 +12,14 @@ export class ConnectionRequestController {
 
   @MessagePattern({ cmd: 'like-connection-request' })
   likeConnectionRequest(payload: { userId: string }) {
-    return this.connectionRequestService.likeConnectionRequest(payload.userId);
+    return this.connectionRequestService.getPendingLikeConnectionRequest(
+      payload.userId,
+    );
   }
 
   @MessagePattern({ cmd: 'aiffiniti-connection-request' })
   aiffinitiConnectionRequest(payload: { userId: string }) {
-    return this.connectionRequestService.aiffinitiConnectionRequest(
+    return this.connectionRequestService.getPendingAiffinitiConnectionRequest(
       payload.userId,
     );
   }

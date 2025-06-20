@@ -843,7 +843,7 @@ export class AuthService {
           .input(inputTxtPath)
           .inputFormat('concat')
           .inputOptions('-safe 0')
-          .outputOptions(['-vf scale=1280:720', '-pix_fmt yuv420p', '-r 25'])
+          .outputOptions(['-vf scale=720:1280', '-pix_fmt yuv420p', '-r 25'])
           .on('end', resolve)
           .on('error', (err) =>
             reject(new Error('FFmpeg error: ' + err.message)),

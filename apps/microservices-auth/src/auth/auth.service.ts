@@ -1146,6 +1146,7 @@ export class AuthService {
         .select({
           photos: schema.userMedia.photos,
           videos: schema.userMedia.aiVideos,
+          photoSlideShow: schema.userMedia.photoSlideShow,
         })
         .from(schema.userMedia)
         .where(eq(schema.userMedia.userId, userId)),
@@ -1165,7 +1166,8 @@ export class AuthService {
       distancePreferredInKm: userInfo[0]?.distancePreferredInKm ?? null,
       loginFormCheckPoint: user.loginFormCheckPoint ?? null,
       photos: media[0]?.photos ?? [],
-      videos: media[0]?.videos ?? [],
+      aiVideos: media[0]?.videos ?? [],
+      photoSlideShow: media[0]?.photoSlideShow ?? [],
       interests: interestsRaw.map((i) => i.interest),
     };
   }

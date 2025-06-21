@@ -22,9 +22,10 @@ import * as FormData from 'form-data';
 import * as streamifier from 'streamifier';
 import * as sharp from 'sharp';
 import { tmpdir } from 'os';
-import { writeFileSync, existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
+import { existsSync, promises as fsPromises } from 'fs';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 interface MqttSettings {
   mqtt_host: string;
@@ -53,6 +54,8 @@ interface MqttMessage {
 
 @Injectable()
 export class AuthService {
+  private mqttSettings: { data: SettingsResponse } | null;
+
   constructor(
     private bestImageService: BestImageService,
     private configService: ConfigService,
@@ -61,7 +64,9 @@ export class AuthService {
     @Inject('POST_SERVICE') private postClient: ClientProxy,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  ) {
+    this.mqttSettings = null;
+  }
 
   get stockmafiaApi(): string {
     return this.configService.get<string>('STOCKMAFIA_API') || '';
@@ -622,6 +627,17 @@ export class AuthService {
     }
   }
 
+  private async generateSlideShowAndUploadToSupabase(
+    images: string[],
+    userId: string,
+  ) {
+    const videoPath = await this.getSlideShow(images);
+    const slideshowUrl = await this.uploadVideoToSupabase(videoPath, userId);
+    await this.cleanupJobFolder(videoPath);
+
+    return slideshowUrl;
+  }
+
   private async startVideoProcessingInBackground(userId: string) {
     try {
       const mediaData = await this.getUserMedia(userId);
@@ -630,20 +646,25 @@ export class AuthService {
 
       console.log('Slide Show Generation Started');
 
-      const videoPath = await this.getSlideShow(mediaData.photos);
-      const slideshowUrl = await this.uploadVideoToSupabase(videoPath, userId);
-      this.cleanupJobFolder(videoPath);
+      const [slideshowUrl, aiVideoRes] = await Promise.all([
+        this.generateSlideShowAndUploadToSupabase(mediaData.photos, userId),
+        this.generateAiVideo(mediaData.photos[0], userId),
+      ]);
+
+      // const videoPath = await this.getSlideShow(mediaData.photos);
+      // const slideshowUrl = await this.uploadVideoToSupabase(videoPath, userId);
+      // this.cleanupJobFolder(videoPath);
 
       await this.db
         .update(schema.userMedia)
         .set({ photoSlideShow: [slideshowUrl] })
         .where(eq(schema.userMedia.userId, userId));
 
-      const aiVideoRes = await this.generateAiVideo(
-        // Apply best image --> Pending
-        mediaData.photos[0],
-        userId,
-      );
+      // const aiVideoRes = await this.generateAiVideo(
+      //   // Apply best image --> Pending
+      //   mediaData.photos[0],
+      //   userId,
+      // );
       const aiVideo = aiVideoRes.videoUrl;
 
       const updatedVideos = [...(mediaData.aiVideos ?? []), aiVideo];
@@ -845,7 +866,7 @@ export class AuthService {
   ): Promise<string> {
     const bucket = 'user-videos';
     const filename = `${userId}-${Date.now()}.mp4`;
-    const fileBuffer = readFileSync(videoPath);
+    const fileBuffer = await fsPromises.readFile(videoPath);
 
     const { error } = await this.supabase.storage
       .from(bucket)
@@ -870,7 +891,9 @@ export class AuthService {
     const outputVideoPath = join(jobDir, 'output.mp4');
 
     try {
-      if (!existsSync(jobDir)) mkdirSync(jobDir);
+      if (!existsSync(jobDir)) {
+        await fsPromises.mkdir(jobDir, { recursive: true });
+      }
       const normalizedImagePaths: string[] = [];
 
       for (let i = 0; i < images.length; i++) {
@@ -896,7 +919,7 @@ export class AuthService {
       // Repeat last image once (required)
       ffmpegInput += `file '${normalizedImagePaths[normalizedImagePaths.length - 1]}'`;
 
-      writeFileSync(inputTxtPath, ffmpegInput);
+      await fsPromises.writeFile(inputTxtPath, ffmpegInput);
 
       await new Promise<void>((resolve, reject) => {
         ffmpeg()
@@ -919,11 +942,11 @@ export class AuthService {
     }
   }
 
-  private cleanupJobFolder(videoPath: string): void {
+  private async cleanupJobFolder(videoPath: string): Promise<void> {
     try {
       const jobDir = videoPath.split('/output.mp4')[0];
       if (existsSync(jobDir)) {
-        rmSync(jobDir, { recursive: true, force: true });
+        await fsPromises.rm(jobDir, { recursive: true, force: true });
         console.log('Temp job folder cleaned:', jobDir);
       }
     } catch (err) {
@@ -931,25 +954,38 @@ export class AuthService {
     }
   }
 
+  @Cron(CronExpression.EVERY_MINUTE)
+  async refreshMqttSettings() {
+    console.log('Cron job running every minutes');
+    this.mqttSettings = (await this.httpService
+      .get<SettingsResponse>(`${this.stockmafiaApi}settings`, {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'X-API-KEY': this.xApiKey,
+        },
+      })
+      .toPromise()) as { data: SettingsResponse };
+  }
+
   private async generateAiVideo(
     imageUrl: string,
     userId: string,
   ): Promise<{ videoUrl: string; progress: string[] }> {
     try {
-      const settingsRes = (await this.httpService
-        .get<SettingsResponse>(`${this.stockmafiaApi}settings`, {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'X-API-KEY': this.xApiKey,
-          },
-        })
-        .toPromise()) as { data: SettingsResponse };
+      if (!this.mqttSettings) {
+        await this.refreshMqttSettings();
+      }
 
+      if (!this.mqttSettings) {
+        throw new InternalServerErrorException(
+          'MQTT settings not available, please try again later',
+        );
+      }
       const {
         mqtt_host: mqttHost,
         mqtt_port: mqttPort,
         mqtt_topic: mqttTopic,
-      } = settingsRes.data.data;
+      } = this.mqttSettings.data.data;
 
       const imageRes = (await this.httpService.axiosRef.get(imageUrl, {
         responseType: 'arraybuffer',

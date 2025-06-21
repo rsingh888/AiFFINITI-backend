@@ -7,6 +7,7 @@ import { SupabaseModule } from '../supabase/supabase.module';
 import { DrizzleModule } from 'schema/drizzle.module';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { BestImageModule } from './best-image/best-image.module';
+import { ScheduleModule } from '@nestjs/schedule';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -14,6 +15,7 @@ import { BestImageModule } from './best-image/best-image.module';
     }),
 
     BestImageModule,
+    ScheduleModule.forRoot(),
 
     ClientsModule.register([
       {

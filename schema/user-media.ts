@@ -6,6 +6,13 @@ export const userMedia = pgTable('user-media', {
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
   photos: jsonb('photos').$type<string[]>(),
-  videos: jsonb('videos').$type<string[]>(),
-  preferredMedia: jsonb('preferred-media').$type<string[]>(),
+  aiVideos: jsonb('ai-videos').$type<string[]>(),
+  photoSlideShow: jsonb('photo-slide-show').$type<string[]>(),
+  // preferredMedia: jsonb('preferred-media').$type<string[]>(),
+  aiVideoProgress: varchar('ai-video-progress', {
+    length: 10,
+  }).default('0%'),
+  photoSlideShowProgress: varchar('photo-slide-show-progress', {
+    length: 10,
+  }).default('0%'),
 });

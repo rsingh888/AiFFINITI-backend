@@ -16,25 +16,51 @@ export class ConnectionRequestService {
 
   async getPendingLikeConnectionRequest(userId: string) {
     try {
-      const likeRequests = await this.db
+      const [receiverLocation] = await this.db
         .select({
-          requesterId: schema.connectionRequest.requesterId,
-          type: schema.connectionRequest.type,
-          status: schema.connectionRequest.status,
+          latitude: schema.userLocation.latitude,
+          longitude: schema.userLocation.longitude,
         })
-        .from(schema.connectionRequest)
-        .where(
-          and(
-            eq(schema.connectionRequest.receiverId, userId),
-            eq(schema.connectionRequest.type, 'like'),
-            eq(schema.connectionRequest.status, 'pending'),
-          ),
-        );
+        .from(schema.userLocation)
+        .where(eq(schema.userLocation.userId, userId));
+
+      if (!receiverLocation) {
+        throw new InternalServerErrorException('User location not found');
+      }
+
+      const { latitude: lat2, longitude: lon2 } = receiverLocation;
+
+      const likeRequests = await this.db.execute(
+        sql`
+        SELECT 
+          cr."requester-id" AS "requesterId",
+          cr."type",
+          cr."status",
+          ui."nick-name" AS "nickname",
+          DATE_PART('year', AGE(ui."date-of-birth")) AS "age",
+          ROUND(
+            6371 * acos(
+              cos(radians(${lat2}))
+              * cos(radians(ul.latitude))
+              * cos(radians(ul.longitude) - radians(${lon2}))
+              + sin(radians(${lat2}))
+              * sin(radians(ul.latitude))
+            )::numeric, 2
+          ) AS "distanceInKm"
+        FROM "connection-request" cr
+        JOIN "user-info" ui ON ui."user-id" = cr."requester-id"
+        JOIN "location" ul ON ul."user-id" = cr."requester-id"
+        WHERE 
+          cr."receiver-id" = ${userId}
+          AND cr."type" = 'like'
+          AND cr."status" = 'pending'
+      `,
+      );
 
       return {
         isSuccess: true,
         message: 'Like connection requests fetched successfully',
-        data: likeRequests,
+        data: likeRequests.rows,
       };
     } catch (err) {
       console.error('likeConnectionRequest error:', err);
@@ -48,25 +74,51 @@ export class ConnectionRequestService {
 
   async getPendingAiffinitiConnectionRequest(userId: string) {
     try {
-      const aiffinitiRequests = await this.db
+      const [currentUserLocation] = await this.db
         .select({
-          requesterId: schema.connectionRequest.requesterId,
-          type: schema.connectionRequest.type,
-          status: schema.connectionRequest.status,
+          latitude: schema.userLocation.latitude,
+          longitude: schema.userLocation.longitude,
         })
-        .from(schema.connectionRequest)
-        .where(
-          and(
-            eq(schema.connectionRequest.receiverId, userId),
-            eq(schema.connectionRequest.type, 'aiffiniti'),
-            eq(schema.connectionRequest.status, 'pending'),
-          ),
-        );
+        .from(schema.userLocation)
+        .where(eq(schema.userLocation.userId, userId));
+
+      if (!currentUserLocation) {
+        throw new InternalServerErrorException('User location not found');
+      }
+
+      const lat2 = currentUserLocation.latitude;
+      const lon2 = currentUserLocation.longitude;
+
+      const aiffinitiRequests = await this.db.execute(
+        sql`
+      SELECT 
+        cr."requester-id" AS "requesterId",
+        cr."type",
+        cr."status",
+        ui."nick-name" AS "nickName",
+        DATE_PART('year', AGE(ui."date-of-birth")) AS "age",
+        ROUND(
+          6371 * acos(
+            cos(radians(${lat2}))
+            * cos(radians(ul.latitude))
+            * cos(radians(ul.longitude) - radians(${lon2}))
+            + sin(radians(${lat2}))
+            * sin(radians(ul.latitude))
+          )::numeric, 2
+        ) AS "distanceInKm"
+      FROM "connection-request" cr
+      JOIN "user-info" ui ON cr."requester-id" = ui."user-id"
+      JOIN "location" ul ON cr."requester-id" = ul."user-id"
+      WHERE cr."receiver-id" = ${userId}
+        AND cr."type" = 'aiffiniti'
+        AND cr."status" = 'pending'
+    `,
+      );
 
       return {
         isSuccess: true,
         message: 'Aiffiniti connection requests fetched successfully',
-        data: aiffinitiRequests,
+        data: aiffinitiRequests.rows,
       };
     } catch (err) {
       console.error('aiffinitiConnectionRequest error:', err);

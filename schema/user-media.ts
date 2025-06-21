@@ -10,6 +10,9 @@ export const userMedia = pgTable('user-media', {
   photoSlideShow: jsonb('photo-slide-show').$type<string[]>(),
   // preferredMedia: jsonb('preferred-media').$type<string[]>(),
   aiVideoProgress: varchar('ai-video-progress', {
-    length: 255,
-  }),
+    length: 10,
+  }).default('0%'),
+  photoSlideShowProgress: varchar('photo-slide-show-progress', {
+    length: 10,
+  }).default('0%'),
 });

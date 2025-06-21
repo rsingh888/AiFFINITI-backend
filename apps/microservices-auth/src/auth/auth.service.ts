@@ -773,8 +773,8 @@ export class AuthService {
       const user = await this.getUserById(userId);
       if (!user) throw new NotFoundException('User not found');
 
-      const userInfo = await this.getUserInfo(userId);
-      if (!userInfo) throw new NotFoundException('User info not found');
+      // const userInfo = await this.getUserInfo(userId);
+      // if (!userInfo) throw new NotFoundException('User info not found');
 
       this.validateCheckPointProgress(
         user.loginFormCheckPoint ?? '',
@@ -790,19 +790,19 @@ export class AuthService {
         throw new NotFoundException('User media record not found');
       }
 
-      await this.db
-        .update(schema.userMedia)
-        .set({
-          preferredMedia: [mediaUrl],
-        })
-        .where(eq(schema.userMedia.userId, userId));
+      // await this.db
+      //   .update(schema.userMedia)
+      //   .set({
+      //     preferredMedia: [mediaUrl],
+      //   })
+      //   .where(eq(schema.userMedia.userId, userId));
 
-      await this.db
-        .update(schema.userInfo)
-        .set({
-          userMediaPreference: mediaPreference,
-        })
-        .where(eq(schema.userInfo.userId, userId));
+      // await this.db
+      //   .update(schema.userInfo)
+      //   .set({
+      //     userMediaPreference: mediaPreference,
+      //   })
+      //   .where(eq(schema.userInfo.userId, userId));
 
       await this.db
         .update(schema.post)

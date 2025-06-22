@@ -1,4 +1,4 @@
-import { pgTable, varchar, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, boolean, timestamp } from 'drizzle-orm/pg-core';
 
 export const loginFormCheckPointEnum = [
   'STARTED',
@@ -22,4 +22,6 @@ export const user = pgTable('users', {
   loginFormCheckPoint: varchar('login-form-checkpoint', { length: 50 }).default(
     'STARTED',
   ),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

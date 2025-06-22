@@ -1,4 +1,10 @@
-import { pgTable, varchar, date, integer } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  varchar,
+  date,
+  integer,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 
 import { user } from './user';
 
@@ -23,4 +29,6 @@ export const userInfo = pgTable('user-info', {
   distancePreferredInKm: integer('distance-preferred-in-km'),
   candidateId: varchar('candidate-id', { length: 255 }),
   userMediaPreference: varchar('user-media-preference', { length: 255 }),
+  createdAt: timestamp('created-at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated-at', { withTimezone: true }).defaultNow(),
 });

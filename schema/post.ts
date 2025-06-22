@@ -24,6 +24,6 @@ export const post = pgTable('post', {
 
   isDeleted: boolean('is-deleted').default(false),
 
-  createdAt: timestamp('created-at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated-at', { withTimezone: true }).defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

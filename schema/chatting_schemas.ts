@@ -79,8 +79,10 @@ export const chat = pgTable('chat', {
     onDelete: 'set null',
   }),
   imageUrl: text('image_url'),
-  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
-  readAt: timestamp('read_at', { mode: 'date' }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }),
   conversationId: uuid('conversation_id')
     .notNull()
     .references(() => conversations.id),

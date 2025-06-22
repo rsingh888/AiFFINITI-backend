@@ -32,5 +32,5 @@ export const userInterestMapping = pgTable('interest-mapping', {
   userId: varchar('user-id', { length: 255 })
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  interest: varchar('interest').notNull(),
+  interest: varchar('interest', { length: 50 }).notNull(),
 });

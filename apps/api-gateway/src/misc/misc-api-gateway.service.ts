@@ -21,6 +21,13 @@ export class MiscApiGatewayService {
     );
   }
 
+  getPostsSuggestionsService(userId: string, data: { limit: number }) {
+    const { limit } = data;
+    return this.miscService.send<string>(
+      { cmd: 'get-posts-suggestions' },
+      { userId, data: { limit } },
+    );
+  }
   // showProfileView(userId: string, data: { viewedId: string }) {
   //   const { viewedId } = data;
   //   return this.miscService.send<string>(

@@ -42,7 +42,9 @@ export const gameParticipants = pgTable('game-participants', {
 
   gameToken: text('game_token'),
 
-  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const gameSessions = pgTable('game-sessions', {
@@ -68,15 +70,17 @@ export const gameSessions = pgTable('game-sessions', {
     },
   ),
 
-  requestedAt: timestamp('requested_at', { mode: 'date' })
+  requestedAt: timestamp('requested_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
-  acceptedAt: timestamp('accepted_at', { mode: 'date' }),
-  rejectedAt: timestamp('rejected_at', { mode: 'date' }),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  rejectedAt: timestamp('rejected_at', { withTimezone: true }),
 
-  gameStartedAt: timestamp('game_started_at', { mode: 'date' }),
-  gameEndedAt: timestamp('game_ended_at', { mode: 'date' }),
-  expectedGameEndTime: timestamp('expected_game_end_time', { mode: 'date' }),
+  gameStartedAt: timestamp('game_started_at', { withTimezone: true }),
+  gameEndedAt: timestamp('game_ended_at', { withTimezone: true }),
+  expectedGameEndTime: timestamp('expected_game_end_time', {
+    withTimezone: true,
+  }),
 
   requestStatus: varchar('request_status', {
     enum: ['pending', 'accepted', 'rejected'],
@@ -92,7 +96,9 @@ export const gameSessions = pgTable('game-sessions', {
     .notNull()
     .default('not-started'),
 
-  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 
   conversationId: uuid('conversation_id')
     .notNull()

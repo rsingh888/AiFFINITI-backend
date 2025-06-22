@@ -1,4 +1,5 @@
 import {
+  boolean,
   date,
   doublePrecision,
   integer,
@@ -9,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { user } from './user';
 import { post } from './post';
+import { InferSelectModel } from 'drizzle-orm';
 
 export const userChatStatistics = pgTable('user_chat_statistics', {
   userId: varchar('user_id', { length: 255 })
@@ -36,6 +38,7 @@ export const userPostsScores = pgTable('user_post_scores', {
   postId: uuid('post_id')
     .primaryKey()
     .references(() => post.postId, { onDelete: 'cascade' }),
+  isPublic: boolean('is_public').default(false),
   userId: varchar('user_id', { length: 255 }).references(() => user.id, {
     onDelete: 'cascade',
   }),
@@ -62,9 +65,12 @@ export const userPostsSuggestionsStore = pgTable(
     userId: varchar('user_id', { length: 255 })
       .primaryKey()
       .references(() => user.id, { onDelete: 'cascade' }),
-    profileIds: varchar('profile_ids', { length: 255 }).array(),
+    postIds: varchar('post_ids', { length: 255 }).array(),
     pickedProfilesCount: integer('picked_profiles_count').default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
 );
+
+export type IUserPostsScores = InferSelectModel<typeof userPostsScores>;

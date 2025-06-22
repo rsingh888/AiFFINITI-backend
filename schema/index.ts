@@ -1,4 +1,9 @@
-import { userInfo, genderType, genderPreferenceType } from './user-info';
+import {
+  userInfo,
+  genderType,
+  genderPreferenceType,
+  GENDER_PREFERENCE_OPTIONS,
+} from './user-info';
 import { user, loginFormCheckPointEnum } from './user';
 import { userLocation } from './user-location';
 import { userInterestMapping, allInterest } from './user-interest-mapping';
@@ -23,6 +28,7 @@ export const schema = {
   userInfo,
   genderType,
   genderPreferenceType,
+  GENDER_PREFERENCE_OPTIONS,
   userInterestMapping,
   allInterest,
   userMedia,

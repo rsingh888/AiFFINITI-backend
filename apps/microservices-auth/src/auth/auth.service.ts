@@ -825,12 +825,18 @@ export class AuthService {
       //   })
       //   .where(eq(schema.userInfo.userId, userId));
 
-      await this.db
+      const [resp] = await this.db
         .update(schema.post)
         .set({ isPublic: true })
-        .where(eq(schema.post.postMediaUrl, mediaUrl));
+        .where(eq(schema.post.postMediaUrl, mediaUrl))
+        .returning();
 
       await this.updateCheckpoint(userId, 'MEDIA_PREFERENCE_DONE');
+
+      if (resp) {
+        const { postId } = resp;
+        await this.generatePostEntryInScoresTable(postId, userId);
+      }
 
       return {
         isSuccess: true,
@@ -855,6 +861,64 @@ export class AuthService {
         }`,
       );
     }
+  }
+
+  private async generatePostEntryInScoresTable(postId: string, userId: string) {
+    const [userDateFromLocationTable] = await this.db
+      .select({
+        userId: schema.userLocation.userId,
+        latitude: schema.userLocation.latitude,
+        longitude: schema.userLocation.longitude,
+      })
+      .from(schema.userLocation)
+      .where(eq(schema.userLocation.userId, userId));
+
+    const [userDataFromInfoTable] = await this.db
+      .select({
+        dateOfBirth: schema.userInfo.dateOfBirth,
+        distancePreferredInKm: schema.userInfo.distancePreferredInKm,
+        gender: schema.userInfo.gender,
+        genderPreference: schema.userInfo.genderPreference,
+      })
+      .from(schema.userInfo)
+      .where(eq(schema.userInfo.userId, userId));
+
+    const interestsResult = await this.db
+      .select({ interest: schema.userInterestMapping.interest })
+      .from(schema.userInterestMapping)
+      .where(eq(schema.userInterestMapping.userId, userId));
+
+    if (
+      !userDateFromLocationTable ||
+      !userDataFromInfoTable ||
+      !interestsResult ||
+      !userDataFromInfoTable.dateOfBirth ||
+      !userDataFromInfoTable.distancePreferredInKm ||
+      !userDataFromInfoTable.gender ||
+      !userDataFromInfoTable.genderPreference
+    ) {
+      throw new InternalServerErrorException(
+        'user data for location, info or interests not found!',
+      );
+    }
+
+    const interests: string[] = interestsResult.map((row) => row.interest);
+
+    await this.db.insert(schema.userPostsScores).values({
+      userId,
+      postId,
+      isPublic: true,
+      userPostBaseScore: 0,
+      longitude: userDateFromLocationTable?.longitude,
+      latitude: userDateFromLocationTable?.latitude,
+      distancePreferredInKm: userDataFromInfoTable?.distancePreferredInKm,
+      dateOfBirth: userDataFromInfoTable.dateOfBirth,
+      gender: userDataFromInfoTable.gender,
+      genderPreference: userDataFromInfoTable.genderPreference,
+      interests: interests,
+    });
+
+    console.log('🟡 : Inserted Post IN PostScores Table --------');
   }
 
   // Best Image selection and Video Generation using AI will be integrated later
@@ -982,10 +1046,10 @@ export class AuthService {
         );
       }
       const {
-        mqtt_host: mqttHost,
-        mqtt_port: mqttPort,
-        mqtt_topic: mqttTopic,
-      } = this.mqttSettings.data.data;
+        mqtt_host: mqttHost = '',
+        mqtt_port: mqttPort = '',
+        mqtt_topic: mqttTopic = '',
+      } = this.mqttSettings?.data?.data || {};
 
       const imageRes = (await this.httpService.axiosRef.get(imageUrl, {
         responseType: 'arraybuffer',

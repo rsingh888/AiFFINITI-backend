@@ -28,7 +28,7 @@ export const userInfo = pgTable('user-info', {
   genderPreference: varchar('gender-preference', { length: 50 }),
   distancePreferredInKm: integer('distance-preferred-in-km'),
   candidateId: varchar('candidate-id', { length: 255 }),
-  userMediaPreference: varchar('user-media-preference', { length: 255 }),
+  // userMediaPreference: varchar('user-media-preference', { length: 255 }),
   createdAt: timestamp('created-at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated-at', { withTimezone: true }).defaultNow(),
 });

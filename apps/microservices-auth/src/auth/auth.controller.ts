@@ -8,9 +8,8 @@ import { UpdateUserGenderDto } from './dto/update-user-gender.dto';
 import { UpdateUserDistancePreferredInKmDto } from './dto/update-user-distance-preferred.dto';
 import { UpdateUserPhotosDto } from './dto/update-user-photos.dto';
 import { UpdateUserGenderPreferenceDto } from './dto/update-user-gender-preference.dto';
-import { User } from '@supabase/supabase-js';
 import { UpdateUserMediaPreferenceDto } from './dto/update-user-media-preference.dto';
-// import { UpdateUserKycDto } from './dto/update-user-kyc.dto';
+import { UpdateUserKycDto } from './dto/update-user-kyc.dto';
 
 @Controller()
 export class AuthController {
@@ -35,8 +34,11 @@ export class AuthController {
   // }
 
   @MessagePattern({ cmd: 'auth-social-login' })
-  async socialLogin(user: User) {
-    return this.authService.socialLogin(user);
+  async handleSocialLogin(data: {
+    token: string;
+    provider: 'google' | 'facebook' | 'apple';
+  }) {
+    return this.authService.socialLogin(data);
   }
 
   @MessagePattern({ cmd: 'update-user-intro' })
@@ -93,14 +95,14 @@ export class AuthController {
     );
   }
 
-  // @MessagePattern({ cmd: 'create-session' })
-  // async createSessionId(payload: { userId: string }) {
-  //   return this.authService.createId(payload.userId);
-  // }
+  @MessagePattern({ cmd: 'create-session' })
+  async createSessionId(payload: { userId: string }) {
+    return this.authService.createSessionId(payload.userId);
+  }
 
   @MessagePattern({ cmd: 'update-user-kyc' })
-  async updateUserKyc(payload: { userId: string }) {
-    return this.authService.updateKyc(payload.userId);
+  async updateUserKyc(payload: { userId: string; data: UpdateUserKycDto }) {
+    return this.authService.updateKyc(payload.userId, payload.data);
   }
 
   // @MessagePattern({ cmd: 'verify-user-photos' })

@@ -12,7 +12,7 @@ import * as ffmpeg from 'fluent-ffmpeg';
 import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
 import { eq } from 'drizzle-orm';
-import { SupabaseClient, User } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
@@ -20,12 +20,20 @@ import { connect as mqttConnect, MqttClient } from 'mqtt';
 import { BestImageService } from './best-image/best-image.service';
 import * as FormData from 'form-data';
 import * as streamifier from 'streamifier';
+import appleSigninAuth from 'apple-signin-auth';
 import * as sharp from 'sharp';
 import { tmpdir } from 'os';
 import { existsSync, promises as fsPromises } from 'fs';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import {
+  RekognitionClient,
+  CreateFaceLivenessSessionCommand,
+  GetFaceLivenessSessionResultsCommand,
+} from '@aws-sdk/client-rekognition';
+import axios from 'axios';
+import { JwtService } from '@nestjs/jwt';
 
 interface MqttSettings {
   mqtt_host: string;
@@ -55,10 +63,12 @@ interface MqttMessage {
 @Injectable()
 export class AuthService {
   private mqttSettings: { data: SettingsResponse } | null;
+  private rekognitionClient = new RekognitionClient();
 
   constructor(
     private bestImageService: BestImageService,
     private configService: ConfigService,
+    private readonly jwtService: JwtService,
     private readonly httpService: HttpService,
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient,
     @Inject('POST_SERVICE') private postClient: ClientProxy,
@@ -66,16 +76,25 @@ export class AuthService {
     private readonly db: NodePgDatabase<typeof schema>,
   ) {
     this.mqttSettings = null;
+    this.rekognitionClient = new RekognitionClient({
+      region: this.configService.get<string>('AWS_REGION')!,
+      credentials: {
+        accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID')!,
+        secretAccessKey: this.configService.get<string>(
+          'AWS_SECRET_ACCESS_KEY',
+        )!,
+      },
+    });
   }
 
-  get stockmafiaApi(): string {
-    return this.configService.get<string>('STOCKMAFIA_API') || '';
+  get mqttStockMafiaApi(): string {
+    return this.configService.get<string>('MQTT_STOCKMAFIA_API') || '';
   }
-  get xApiKey(): string {
-    return this.configService.get<string>('X_API_KEY') || '';
+  get mqttXApiKey(): string {
+    return this.configService.get<string>('MQTT_X_API_KEY') || '';
   }
-  get accessToken(): string {
-    return this.configService.get<string>('ACCESS_TOKEN') || '';
+  get mqttAccessToken(): string {
+    return this.configService.get<string>('MQTT_ACCESS_TOKEN') || '';
   }
 
   // Testing purpose
@@ -86,16 +105,6 @@ export class AuthService {
   }
 
   // For Guard
-  async verifyToken(accessToken: string) {
-    const { data, error } = await this.supabase.auth.getUser(accessToken);
-
-    if (error || !data?.user) {
-      console.log('🟡 : AuthService : error:', error);
-      throw new UnauthorizedException('Invalid or expired token');
-    }
-
-    return { ...data.user };
-  }
 
   private validateCheckPointProgress(
     userCheckpoint: string,
@@ -153,52 +162,120 @@ export class AuthService {
     return media[0];
   }
 
-  // SOCIAL LOGIN
-  async socialLogin(user: User) {
+  async verifyToken(accessToken: string) {
     try {
-      const { email: userEmail, user_metadata, app_metadata } = user;
-      const provider = app_metadata?.provider as 'google' | 'facebook';
+      const data = await this.jwtService.verifyAsync<{
+        [key: string]: unknown;
+      }>(accessToken);
 
-      if (!userEmail) throw new Error('Email is missing from Supabase user');
-      if (!provider) throw new Error('Auth provider is not specified');
+      console.log(data);
 
-      const isEmailVerified = Boolean(user_metadata?.email_verified);
+      if (!data || !data.email) {
+        throw new UnauthorizedException('Invalid or expired token');
+      }
+      // Ensure the returned value is of type AppUser
+      return data;
+    } catch (error) {
+      console.log('🟡 : AuthService : error:', error);
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+  }
 
-      const existing = await this.db
-        .select()
-        .from(schema.user)
-        .where(eq(schema.user.email, userEmail));
+  private async verifyAppleToken(idToken: string) {
+    const response = await appleSigninAuth.verifyIdToken(idToken, {
+      audience: this.configService.get<string>('APPLE_CLIENT_ID')!, // Your app's bundle ID
+      ignoreExpiration: true,
+    });
 
-      if (existing.length > 0) {
+    return {
+      email: response.email,
+    };
+  }
+
+  private async verifySocialToken(token: string, provider: string) {
+    switch (provider) {
+      case 'google': {
+        // use Google Auth API
+        const googleRes = await axios.get(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${token}`,
+        );
+        const googleData = googleRes.data as {
+          email: string;
+        };
         return {
-          isSuccess: true,
-          message: 'User already exists',
-          userDetail: {
-            email: userEmail,
-            loginCheckPoint: existing[0].loginFormCheckPoint,
-          },
+          email: googleData.email,
         };
       }
+      case 'facebook': {
+        // Validate Facebook token
+        const fbRes = await axios.get(
+          `https://graph.facebook.com/me?access_token=${token}&fields=id,email,name`,
+        );
+        const fbData = fbRes.data as {
+          email: string;
+        };
+        return {
+          email: fbData.email,
+        };
+      }
+      case 'apple': {
+        // You will need to decode & verify Apple ID token using Apple's public key
+        return await this.verifyAppleToken(token);
+      }
+      default: {
+        throw new Error('Unsupported provider');
+      }
+    }
+  }
 
-      await this.db.insert(schema.user).values({
-        id: user.id,
-        email: userEmail,
-        isEmailVerified,
-        authProvider: provider,
-        loginFormCheckPoint: 'STARTED',
-      });
+  // SOCIAL LOGIN
+  async socialLogin({
+    token,
+    provider,
+  }: {
+    token: string;
+    provider: 'google' | 'facebook' | 'apple';
+  }) {
+    try {
+      const userInfo = (await this.verifySocialToken(token, provider)) as {
+        email: string;
+      };
+      const { email } = userInfo;
+
+      if (!email)
+        throw new UnauthorizedException('Email not found in provider data');
+
+      let [existingUser] = await this.db
+        .select()
+        .from(schema.user)
+        .where(eq(schema.user.email, email));
+
+      if (!existingUser) {
+        [existingUser] = await this.db
+          .insert(schema.user)
+          .values({
+            id: uuidv4(),
+            email,
+            authProvider: provider,
+            loginFormCheckPoint: 'STARTED',
+          })
+          .returning();
+      }
+
+      const jwt = this.jwtService.sign(existingUser, { expiresIn: '7d' });
 
       return {
         isSuccess: true,
-        message: 'User Added to DB',
+        message: 'User created',
         data: {
-          checkPoint: 'STARTED',
-          user,
+          token: jwt,
+          user: existingUser,
         },
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`OAuth Sign-In failed: ${message}`);
+      throw new Error(
+        `OAuth Login failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
@@ -582,10 +659,45 @@ export class AuthService {
     }
   }
 
-  async updateKyc(userId: string) {
+  // KYC Update
+  async createSessionId(userId: string) {
     try {
-      // Placeholder for actual BioPass integration
-      const candidateId = 'hf3u-fjkejrjfejk-njhjbvherbh';
+      const user = await this.getUserById(userId);
+      if (!user) throw new NotFoundException('User not found');
+
+      this.validateCheckPointProgress(
+        user.loginFormCheckPoint ?? '',
+        'KYC_DONE',
+      );
+
+      const command = new CreateFaceLivenessSessionCommand({});
+      const response = await this.rekognitionClient.send(command);
+
+      await this.db
+        .update(schema.userInfo)
+        .set({ sessionId: response.SessionId })
+        .where(eq(schema.userInfo.userId, userId));
+      return {
+        isSuccess: true,
+        data: {
+          sessionId: response.SessionId,
+        },
+      };
+    } catch (err) {
+      console.error('Error creating KYC session:', err);
+      if (err instanceof NotFoundException) {
+        throw err;
+      }
+      throw new InternalServerErrorException(
+        `Failed to create KYC session: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async updateKyc(userId: string, data: { sessionId: string }) {
+    try {
+      // AWS Integration
+      const { sessionId } = data;
 
       const user = await this.getUserById(userId);
       if (!user) throw new NotFoundException('User not found');
@@ -598,9 +710,18 @@ export class AuthService {
         'KYC_DONE',
       );
 
+      const command = new GetFaceLivenessSessionResultsCommand({
+        SessionId: sessionId,
+      });
+      const response = await this.rekognitionClient.send(command);
+      const confidence = Math.round(response.Confidence ?? 0);
+
       await this.db
         .update(schema.userInfo)
-        .set({ candidateId })
+        .set({
+          sessionId,
+          confidenceScore: confidence,
+        })
         .where(eq(schema.userInfo.userId, userId));
 
       await this.updateCheckpoint(userId, 'KYC_DONE');
@@ -609,7 +730,7 @@ export class AuthService {
         isSuccess: true,
         message: 'User KYC completed successfully',
         data: {
-          candidateId,
+          confidenceScore: confidence,
           checkPoint: 'KYC_DONE',
         },
       };
@@ -646,9 +767,13 @@ export class AuthService {
 
       console.log('Slide Show Generation Started');
 
+      const bestImage =
+        (await this.bestImageService.selectBestImage(mediaData.photos)) ||
+        mediaData.photos[0];
+
       const [slideshowUrl, aiVideoRes] = await Promise.all([
         this.generateSlideShowAndUploadToSupabase(mediaData.photos, userId),
-        this.generateAiVideo(mediaData.photos[0], userId),
+        this.generateAiVideo(bestImage, userId),
       ]);
 
       // const videoPath = await this.getSlideShow(mediaData.photos);
@@ -864,7 +989,7 @@ export class AuthService {
   }
 
   private async generatePostEntryInScoresTable(postId: string, userId: string) {
-    const [userDateFromLocationTable] = await this.db
+    const [userDataFromLocationTable] = await this.db
       .select({
         userId: schema.userLocation.userId,
         latitude: schema.userLocation.latitude,
@@ -889,7 +1014,7 @@ export class AuthService {
       .where(eq(schema.userInterestMapping.userId, userId));
 
     if (
-      !userDateFromLocationTable ||
+      !userDataFromLocationTable ||
       !userDataFromInfoTable ||
       !interestsResult ||
       !userDataFromInfoTable.dateOfBirth ||
@@ -909,8 +1034,8 @@ export class AuthService {
       postId,
       isPublic: true,
       userPostBaseScore: 0,
-      longitude: userDateFromLocationTable?.longitude,
-      latitude: userDateFromLocationTable?.latitude,
+      longitude: userDataFromLocationTable?.longitude,
+      latitude: userDataFromLocationTable?.latitude,
       distancePreferredInKm: userDataFromInfoTable?.distancePreferredInKm,
       dateOfBirth: userDataFromInfoTable.dateOfBirth,
       gender: userDataFromInfoTable.gender,
@@ -1022,10 +1147,10 @@ export class AuthService {
   async refreshMqttSettings() {
     console.log('Cron job running every minutes');
     this.mqttSettings = (await this.httpService
-      .get<SettingsResponse>(`${this.stockmafiaApi}settings`, {
+      .get<SettingsResponse>(`${this.mqttStockMafiaApi}settings`, {
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          'X-API-KEY': this.xApiKey,
+          Authorization: `Bearer ${this.mqttAccessToken}`,
+          'X-API-KEY': this.mqttXApiKey,
         },
       })
       .toPromise()) as { data: SettingsResponse };
@@ -1064,12 +1189,12 @@ export class AuthService {
 
       const generationRes =
         (await this.httpService.axiosRef.post<GenerationResponse>(
-          `${this.stockmafiaApi}media-generations`,
+          `${this.mqttStockMafiaApi}media-generations`,
           formData,
           {
             headers: {
-              Authorization: `Bearer ${this.accessToken}`,
-              'X-API-KEY': this.xApiKey,
+              Authorization: `Bearer ${this.mqttAccessToken}`,
+              'X-API-KEY': this.mqttXApiKey,
               ...formData.getHeaders(),
             },
           },

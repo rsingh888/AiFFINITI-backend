@@ -9,9 +9,8 @@ import { UpdatePhotosDto } from './dto/update-photos.dto';
 import { AuthGuard } from '../common/guard/auth.guard';
 // import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateGenderPreferenceDto } from './dto/update-gender-preference.dto';
-import { User } from '@supabase/supabase-js';
 import { UpdateMediaPreferenceDto } from './dto/update-media-preference.dto';
-// import { UpdateKycDto } from './dto/update-kyc.dto';
+import { UpdateKycDto } from './dto/update-kyc.dto';
 
 @Controller()
 export class AuthApiGatewayController {
@@ -34,12 +33,12 @@ export class AuthApiGatewayController {
   //   return this.AuthApiGatewayService.refreshAccessToken(body.refreshToken);
   // }
 
-  @UseGuards(AuthGuard)
   @Post('social-login')
-  postSocialLogin(@Req() req: { user: User }) {
+  postSocialLogin(
+    @Body() body: { token: string; provider: 'google' | 'facebook' | 'apple' },
+  ) {
     // console.log('🟡 : AuthApiGatewayController : User:', req.user);
-    const user = req.user;
-    return this.AuthApiGatewayService.postSocialLogin(user);
+    return this.AuthApiGatewayService.postSocialLogin(body);
   }
 
   @UseGuards(AuthGuard)
@@ -112,11 +111,21 @@ export class AuthApiGatewayController {
   }
 
   @UseGuards(AuthGuard)
+  @Get('create-session')
+  createSession(@Req() req: { user: { id: string } }) {
+    const userId = req.user.id;
+    return this.AuthApiGatewayService.createSession(userId);
+  }
+
+  @UseGuards(AuthGuard)
   @Post('user-kyc')
-  postUserKyc(@Req() req: { user: { id: string } }) {
+  postUserKyc(
+    @Req() req: { user: { id: string } },
+    @Body() body: UpdateKycDto,
+  ) {
     const userId = req.user.id;
 
-    return this.AuthApiGatewayService.postUpdateKyc(userId);
+    return this.AuthApiGatewayService.postUpdateKyc(userId, body);
   }
 
   // @UseGuards(AuthGuard)

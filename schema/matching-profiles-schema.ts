@@ -12,6 +12,8 @@ import { user } from './user';
 import { post } from './post';
 import { InferSelectModel } from 'drizzle-orm';
 
+// TODO : We need to store user Information in user score rather than storing it in post score
+
 export const userChatStatistics = pgTable('user_chat_statistics', {
   userId: varchar('user_id', { length: 255 })
     .primaryKey()

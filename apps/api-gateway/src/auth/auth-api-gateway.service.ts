@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { User } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
@@ -31,8 +30,11 @@ export class AuthApiGatewayService {
   //   return result; // { accessToken, refreshToken }
   // }
 
-  postSocialLogin(user: User) {
-    return this.authService.send<string>({ cmd: 'auth-social-login' }, user);
+  postSocialLogin(body: {
+    token: string;
+    provider: 'google' | 'facebook' | 'apple';
+  }) {
+    return this.authService.send({ cmd: 'auth-social-login' }, body);
   }
 
   postUpdateIntro(
@@ -132,19 +134,16 @@ export class AuthApiGatewayService {
     );
   }
 
-  //  createSession(userId: string) {
-  //   const status = await firstValueFrom(
-  //     this.authService.send<string>({ cmd: 'create-session' }, { userId }),
-  //   );
-  //   return status;
-  // }
+  createSession(userId: string) {
+    return this.authService.send<string>({ cmd: 'create-session' }, { userId });
+  }
 
-  postUpdateKyc(userId: string) {
-    // const { sessionId } = data;
+  postUpdateKyc(userId: string, data: { sessionId: string }) {
+    const { sessionId } = data;
 
     return this.authService.send<string>(
       { cmd: 'update-user-kyc' },
-      { userId },
+      { userId, data: { sessionId } },
     );
   }
 

@@ -341,7 +341,7 @@ export class MicroserviceMiscService {
   }
 
   async getPostsSuggestionsService(userId: string, data: { limit: number }) {
-    const limit = Math.min(data.limit, 10);
+    const limit = Math.min(data.limit, 5);
 
     let [suggestions] = await this.db
       .select()
@@ -358,7 +358,7 @@ export class MicroserviceMiscService {
 
     console.log('🟡 : MicroserviceMiscService : suggestions:', suggestions);
 
-    const currentSuggestions = suggestions.postIds?.splice(0, limit);
+    const currentSuggestions = suggestions.postIds?.slice(0, limit);
 
     const postsSize = suggestions.postIds?.length;
     const shift = limit % (postsSize || 1);
@@ -474,7 +474,7 @@ export class MicroserviceMiscService {
     return this.db
       .select({
         userId: schema.userMedia.userId,
-        imageCount: sql`COUNT(*)`.as('imageCount'),
+        imageCount: sql<number>`COUNT(*)`.as('imageCount'),
       })
       .from(schema.userMedia)
       .where(inArray(schema.userMedia.userId, userIds))
@@ -500,7 +500,7 @@ export class MicroserviceMiscService {
     return this.db
       .select({
         userId: schema.gameParticipants.participantId,
-        gamesPlayed: sql`COUNT(*)`.as('gamesPlayed'),
+        gamesPlayed: sql<number>`COUNT(*)`.as('gamesPlayed'),
       })
       .from(schema.gameParticipants)
       .innerJoin(
@@ -524,8 +524,12 @@ export class MicroserviceMiscService {
     return this.db
       .select({
         userId: schema.chat.senderId,
-        lastChatTime: sql`MAX(${schema.chat.createdAt})`.as('lastChatTime'),
-        totalChatMessagesSent: sql`COUNT(*)`.as('totalChatMessagesSent'),
+        lastChatTime: sql<Date | string>`MAX(${schema.chat.createdAt})`.as(
+          'lastChatTime',
+        ),
+        totalChatMessagesSent: sql<number>`COUNT(*)`.as(
+          'totalChatMessagesSent',
+        ),
         //     avgDelay: sql`
         // AVG(EXTRACT(EPOCH FROM ${schema.chat.createdAt} - LAG(${schema.chat.createdAt}) OVER (
         //   PARTITION BY ${schema.chat.senderId} ORDER BY ${schema.chat.createdAt}
@@ -584,8 +588,7 @@ export class MicroserviceMiscService {
         lastChatTime,
         totalChatMessagesSent,
       }) => {
-        let userProfileBaseScore =
-          (imageCount as number) * PROFILE_SCORES.IMAGES_COUNT;
+        let userProfileBaseScore = imageCount * PROFILE_SCORES.IMAGES_COUNT;
 
         if (joiningDate) {
           // const joinDate = new Date(joiningDate);
@@ -604,8 +607,7 @@ export class MicroserviceMiscService {
         }
 
         if (gamesPlayed) {
-          userProfileBaseScore +=
-            (gamesPlayed as number) * PROFILE_SCORES.GAME_PLAYED;
+          userProfileBaseScore += gamesPlayed * PROFILE_SCORES.GAME_PLAYED;
         }
 
         if (lastChatTime && typeof lastChatTime === 'string') {
@@ -628,8 +630,7 @@ export class MicroserviceMiscService {
 
         if (totalChatMessagesSent) {
           userProfileBaseScore +=
-            (totalChatMessagesSent as number) *
-            PROFILE_SCORES.TOTAL_CHAT_MESSAGES_SENT;
+            totalChatMessagesSent * PROFILE_SCORES.TOTAL_CHAT_MESSAGES_SENT;
         }
 
         return {
@@ -723,6 +724,8 @@ export class MicroserviceMiscService {
         userPostBaseScore: Math.round(userPostBaseScore),
       };
     });
+
+    // This logic is not good we need to optimize it
 
     await this.db
       .insert(schema.userPostsScores)

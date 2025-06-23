@@ -1,4 +1,9 @@
-import { userInfo, genderType, genderPreferenceType } from './user-info';
+import {
+  userInfo,
+  genderType,
+  genderPreferenceType,
+  GENDER_PREFERENCE_OPTIONS,
+} from './user-info';
 import { user, loginFormCheckPointEnum } from './user';
 import { userLocation } from './user-location';
 import { userInterestMapping, allInterest } from './user-interest-mapping';
@@ -10,6 +15,12 @@ import { postViews } from './post-views';
 import { post } from './post';
 import { postAiffinities } from './post-aiffiniti';
 import { connectionRequest } from './connection-request';
+import {
+  userChatStatistics,
+  userPostsScores,
+  userPostsSuggestionsStore,
+  userProfilesScores,
+} from './matching-profiles-schema';
 
 export const schema = {
   user,
@@ -17,6 +28,7 @@ export const schema = {
   userInfo,
   genderType,
   genderPreferenceType,
+  GENDER_PREFERENCE_OPTIONS,
   userInterestMapping,
   allInterest,
   userMedia,
@@ -30,4 +42,8 @@ export const schema = {
   post,
   postAiffinities,
   connectionRequest,
+  userChatStatistics,
+  userProfilesScores,
+  userPostsScores,
+  userPostsSuggestionsStore,
 };

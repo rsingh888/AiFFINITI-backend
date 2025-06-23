@@ -4,7 +4,7 @@ import { GetConversationsDto } from './dto/get-conversations.dto';
 import { GetChatMessagesDto } from './dto/get-chat-messages.dto';
 import { GetUser } from '../decorators/user.decorator';
 import { AuthGuard } from '../common/guard/auth.guard';
-import { SupabaseUser } from '../common/types/userInterface';
+import { AppUser } from '../common/types/userInterface';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { GameEndedDto } from './dto/game-ended.dto';
 
@@ -15,7 +15,7 @@ export class ChatController {
   @Get('conversations')
   @UseGuards(AuthGuard)
   getConversations(
-    @GetUser() user: SupabaseUser,
+    @GetUser() user: AppUser,
     @Query() dto: GetConversationsDto,
   ) {
     return this.ChatApiGatewayService.getConversationsForUser(user.id, dto);
@@ -23,14 +23,14 @@ export class ChatController {
 
   @Get('messages')
   @UseGuards(AuthGuard)
-  getMessages(@Query() dto: GetChatMessagesDto, @GetUser() user: SupabaseUser) {
+  getMessages(@Query() dto: GetChatMessagesDto, @GetUser() user: AppUser) {
     return this.ChatApiGatewayService.getMessagesForConversation(user.id, dto);
   }
 
   @Post('personal-conversation')
   @UseGuards(AuthGuard)
   createPersonalConversation(
-    @GetUser() user: SupabaseUser,
+    @GetUser() user: AppUser,
     @Body() dto: CreateConversationDto,
   ) {
     return this.ChatApiGatewayService.createPersonalConversation(user.id, dto);
@@ -44,7 +44,7 @@ export class ChatController {
   @UseGuards(AuthGuard)
   @Get('get-last-message')
   getLastMessageForConversation(
-    @GetUser() user: SupabaseUser,
+    @GetUser() user: AppUser,
     @Query('conversationId') conversationId: string,
   ) {
     return this.ChatApiGatewayService.getLastMessageForConversation(

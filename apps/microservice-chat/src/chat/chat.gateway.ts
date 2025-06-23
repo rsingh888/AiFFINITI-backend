@@ -27,7 +27,7 @@ import { schema } from '../../../../schema/index';
 import { ChatMessageType } from 'schema/chatting_schemas';
 
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { SupabaseUser } from 'apps/api-gateway/src/common/types/userInterface';
+import { AppUser } from 'apps/api-gateway/src/common/types/userInterface';
 import { ChattingSocketService } from './chatting-socket.service';
 import { GameService } from '../games/games.service';
 // import { GameSessionRequestStatus, GameStatus } from 'schema/game_sessions';
@@ -111,7 +111,7 @@ export class ChatGateway
     }
 
     try {
-      const user = await firstValueFrom<SupabaseUser>(
+      const user = await firstValueFrom<AppUser>(
         this.authClient.send({ cmd: 'auth-verify-token' }, token),
       );
       console.log('🟡 : handleConnection: user:', user);

@@ -34,6 +34,18 @@ export class MiscApiGatewayController {
     });
   }
 
+  @UseGuards(AuthGuard)
+  @Get('posts-suggestions')
+  getPostsSuggestionsController(
+    @Req() req: { user: { id: string } },
+    @Query('limit', new DefaultValuePipe(3), ParseIntPipe) limit: number,
+  ) {
+    const userId = req.user.id;
+    return this.MiscApiGatewayService.getPostsSuggestionsService(userId, {
+      limit,
+    });
+  }
+
   // @UseGuards(AuthGuard)
   // @Post('profile-view/:viewedId')
   // showProfileView(

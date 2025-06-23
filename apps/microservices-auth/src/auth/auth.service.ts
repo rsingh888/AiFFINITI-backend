@@ -236,6 +236,8 @@ export class AuthService {
     token: string;
     provider: 'google' | 'facebook' | 'apple';
   }) {
+    console.log('🟡 : 🟡 --> AuthService : token:', token);
+    console.log('🟡 : 🟡 --> AuthService : provider:', provider);
     try {
       const userInfo = (await this.verifySocialToken(token, provider)) as {
         email: string;

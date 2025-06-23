@@ -989,7 +989,7 @@ export class AuthService {
   }
 
   private async generatePostEntryInScoresTable(postId: string, userId: string) {
-    const [userDateFromLocationTable] = await this.db
+    const [userDataFromLocationTable] = await this.db
       .select({
         userId: schema.userLocation.userId,
         latitude: schema.userLocation.latitude,
@@ -1014,7 +1014,7 @@ export class AuthService {
       .where(eq(schema.userInterestMapping.userId, userId));
 
     if (
-      !userDateFromLocationTable ||
+      !userDataFromLocationTable ||
       !userDataFromInfoTable ||
       !interestsResult ||
       !userDataFromInfoTable.dateOfBirth ||
@@ -1034,8 +1034,8 @@ export class AuthService {
       postId,
       isPublic: true,
       userPostBaseScore: 0,
-      longitude: userDateFromLocationTable?.longitude,
-      latitude: userDateFromLocationTable?.latitude,
+      longitude: userDataFromLocationTable?.longitude,
+      latitude: userDataFromLocationTable?.latitude,
       distancePreferredInKm: userDataFromInfoTable?.distancePreferredInKm,
       dateOfBirth: userDataFromInfoTable.dateOfBirth,
       gender: userDataFromInfoTable.gender,

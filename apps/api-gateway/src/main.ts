@@ -7,6 +7,7 @@ const allowedOrigin = [
   'http://localhost:4000',
   'https://aiffiniti-frontend-testing.vercel.app',
   'https://testing-aiffiniti-frontend-testing.vercel.app',
+  'https://aiffiniti-faceliveness-web-view.vercel.app',
 ];
 
 async function bootstrap() {

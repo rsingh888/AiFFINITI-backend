@@ -1316,6 +1316,18 @@ export class AuthService {
         '-------- ❌ ❌ ❌ AI Video Generation Failed ❌ ❌ ❌ --------',
       );
       console.log(err.message);
+      if (typeof err === 'object' && err !== null) {
+        console.log(Object.keys(err));
+      }
+
+      console.log(
+        '---------------------- err.response --------------------------',
+      );
+      console.log(err.response);
+      console.log(
+        '---------------- err.response.data ----------------------------------',
+      );
+      console.log(err.response.data);
       console.log('--------------------------------------------------');
       console.log(err);
       console.log('--------------------------------------------------');

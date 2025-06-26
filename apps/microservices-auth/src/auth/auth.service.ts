@@ -864,14 +864,9 @@ export class AuthService {
 
         await this.updateCheckpoint(userId, 'PHOTOS_DONE');
       } else {
-        const currentMedia = existingMedia[0];
-        const updatedPhotos = photos
-          ? [...new Set([...(currentMedia.photos ?? []), ...photos])]
-          : currentMedia.photos;
-
         await this.db
           .update(schema.userMedia)
-          .set({ photos: updatedPhotos })
+          .set({ photos: photos })
           .where(eq(schema.userMedia.userId, userId));
       }
 

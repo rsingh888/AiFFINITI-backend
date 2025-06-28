@@ -1319,7 +1319,7 @@ export class AuthService {
       console.log(
         '---------------- err.response.data ----------------------------------',
       );
-      console.log(err.response.data);
+      console.log(err.response?.data);
       console.log('--------------------------------------------------');
       throw new InternalServerErrorException('Failed to generate AI video');
     }

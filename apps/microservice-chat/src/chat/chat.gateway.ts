@@ -420,14 +420,12 @@ export class ChatGateway
               player1: {
                 id: user1?.id || 'User 1',
                 name: user1?.intro.nickName || 'User 1',
-                avatarUrl:
-                  'https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&w=200',
+                avatarUrl: user1?.photos?.[0] || '',
               },
               player2: {
                 id: user2?.id || 'User 1',
                 name: user2?.intro.nickName || 'User 1',
-                avatarUrl:
-                  'https://cdn2.iconfinder.com/data/icons/circle-avatars-1/128/050_girl_avatar_profile_woman_suit_student_officer-512.png',
+                avatarUrl: user2?.photos?.[0] || '',
               },
               sessionId: gameSession.id,
             }),
@@ -435,14 +433,12 @@ export class ChatGateway
               player2: {
                 id: user1?.id || 'User 1',
                 name: user1?.intro.nickName || 'User 1',
-                avatarUrl:
-                  'https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&w=200',
+                avatarUrl: user1?.photos?.[0] || '',
               },
               player1: {
                 id: user2?.id || 'User 1',
                 name: user2?.intro.nickName || 'User 1',
-                avatarUrl:
-                  'https://cdn2.iconfinder.com/data/icons/circle-avatars-1/128/050_girl_avatar_profile_woman_suit_student_officer-512.png',
+                avatarUrl: user2?.photos?.[0] || '',
               },
               sessionId: gameSession.id,
             }),

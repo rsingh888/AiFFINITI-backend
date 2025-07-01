@@ -840,12 +840,15 @@ export class AuthService {
 
       await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
     } catch (err) {
-      console.error('------- ‼️ ❌ AI IMAGE GENERATION ISSUE ❌ ‼️ ---------');
+      console.log(
+        '------- ‼️ ❌ AI VIDEO GENERATION ISSUE ❌ ‼️ ---------',
+        new Date(),
+      );
       console.log(err.message);
       console.log('------------------------------------------------');
       console.log(err?.response);
       console.log('------------------------------------------------');
-      console.error('Background video generation failed:\n----->', err);
+      console.error('Background video generation failed:\n----->', new Date());
       console.log('------------------------------------------------');
     }
   }

@@ -168,7 +168,9 @@ export class AuthService {
         [key: string]: unknown;
       }>(accessToken);
 
-      console.log(data);
+      if (data && typeof data === 'object') {
+        console.log('token --> ', JSON.stringify(data));
+      }
 
       if (!data || !data.email) {
         throw new UnauthorizedException('Invalid or expired token');
@@ -1244,7 +1246,7 @@ export class AuthService {
         '-------- 🟡 🟡 AI GENERATION RESPONSE --------',
         new Date(),
         '\n',
-        generationRes,
+        generationRes?.data,
       );
 
       const generationId = generationRes.data.data.generation_id;
@@ -1267,12 +1269,17 @@ export class AuthService {
         }, 300000);
 
         client.on('connect', () => {
+          console.log('-------- 🟡 🟡 connected to MQTT --------', new Date());
           client.subscribe(mqttTopic, (err) => {
             if (err) {
               clearTimeout(timeout);
               client.end();
               reject(new Error('MQTT subscription failed'));
             }
+            console.log(
+              '-------- 🟡 🟡 subscribed to MQTT --------',
+              new Date(),
+            );
           });
         });
 
@@ -1281,6 +1288,10 @@ export class AuthService {
         let flag75: boolean = false;
 
         client.on('message', (topic, message) => {
+          console.log(
+            '-------- 🟡 🟡 received message from MQTT --------',
+            new Date(),
+          );
           void (async () => {
             try {
               const payload = JSON.parse(message.toString()) as MqttMessage;

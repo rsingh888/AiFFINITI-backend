@@ -213,6 +213,7 @@ export class AuthService {
         const fbRes = await axios.get(
           `https://graph.facebook.com/me?access_token=${token}&fields=id,email,name`,
         );
+        console.log('🟡 : AuthService : fbRes:', fbRes);
         const fbData = fbRes.data as {
           email: string;
         };

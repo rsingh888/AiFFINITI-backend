@@ -37,6 +37,7 @@ export class ConnectionRequestService {
           cr."type",
           cr."status",
           ui."nick-name" AS "nickname",
+          um."photos" AS "photos",
           DATE_PART('year', AGE(ui."date-of-birth")) AS "age",
           ROUND(
             6371 * acos(
@@ -50,6 +51,7 @@ export class ConnectionRequestService {
         FROM "connection-request" cr
         JOIN "user-info" ui ON ui."user-id" = cr."requester-id"
         JOIN "location" ul ON ul."user-id" = cr."requester-id"
+        JOIN "user-media" um ON um."user-id" = cr."requester-id"
         WHERE 
           cr."receiver-id" = ${userId}
           AND cr."type" = 'like'
@@ -96,6 +98,7 @@ export class ConnectionRequestService {
         cr."type",
         cr."status",
         ui."nick-name" AS "nickName",
+        um."photos" AS "photos",
         DATE_PART('year', AGE(ui."date-of-birth")) AS "age",
         ROUND(
           6371 * acos(
@@ -109,6 +112,7 @@ export class ConnectionRequestService {
       FROM "connection-request" cr
       JOIN "user-info" ui ON cr."requester-id" = ui."user-id"
       JOIN "location" ul ON cr."requester-id" = ul."user-id"
+      JOIN "user-media" um ON cr."requester-id" = um."user-id"
       WHERE cr."receiver-id" = ${userId}
         AND cr."type" = 'aiffiniti'
         AND cr."status" = 'pending'

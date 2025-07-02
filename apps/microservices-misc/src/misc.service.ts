@@ -130,7 +130,7 @@ export class MicroserviceMiscService {
 
     const enriched = posts.map((p) => ({
       ...p,
-      city: p.city || 'Delhi',
+      city: p.city || ' ',
       hasViewed: false, // Default value, can be updated based on your logic
     }));
 
@@ -464,7 +464,7 @@ export class MicroserviceMiscService {
 
     const enriched = posts.map((p) => ({
       ...p,
-      city: p.city || 'Delhi',
+      city: p.city || ' ',
     }));
 
     return enriched;

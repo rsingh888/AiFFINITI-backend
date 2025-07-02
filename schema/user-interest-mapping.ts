@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { user } from './user';
 
 export const allInterest = [
@@ -33,4 +33,6 @@ export const userInterestMapping = pgTable('interest-mapping', {
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
   interest: varchar('interest', { length: 50 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

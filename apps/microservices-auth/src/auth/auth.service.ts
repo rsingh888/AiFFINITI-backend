@@ -171,7 +171,9 @@ export class AuthService {
         [key: string]: unknown;
       }>(accessToken);
 
-      console.log(data);
+      if (data && typeof data === 'object') {
+        console.log('token --> ', JSON.stringify(data));
+      }
 
       if (!data || !data.email) {
         throw new UnauthorizedException('Invalid or expired token');
@@ -215,6 +217,7 @@ export class AuthService {
           `https://graph.facebook.com/me?access_token=${token}&fields=id,email,name`,
         );
         // CAUTION : TODO :-----> ADARSH AGGRAWAL EMAIL IN FUTURE
+        console.log('🟡 : AuthService : fbRes:', fbRes);
         const fbData = fbRes.data as {
           email: string;
           id: string;
@@ -896,12 +899,15 @@ export class AuthService {
 
       await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
     } catch (err) {
-      console.error('------- ‼️ ❌ AI IMAGE GENERATION ISSUE ❌ ‼️ ---------');
+      console.log(
+        '------- ‼️ ❌ AI VIDEO GENERATION ISSUE ❌ ‼️ ---------',
+        new Date(),
+      );
       console.log(err.message);
       console.log('------------------------------------------------');
       console.log(err?.response);
       console.log('------------------------------------------------');
-      console.error('Background video generation failed:\n----->', err);
+      console.error('Background video generation failed:\n----->', new Date());
       console.log('------------------------------------------------');
     }
   }
@@ -1242,6 +1248,11 @@ export class AuthService {
     userId: string,
   ): Promise<{ videoUrl: string; progress: string[] }> {
     try {
+      console.log(
+        '-------- > > > AI Video Generation STARTED < < < --------',
+        new Date(),
+      );
+
       if (!this.mqttSettings) {
         await this.refreshMqttSettings();
       }
@@ -1251,11 +1262,17 @@ export class AuthService {
           'MQTT settings not available, please try again later',
         );
       }
+
       const {
         mqtt_host: mqttHost = '',
         mqtt_port: mqttPort = '',
         mqtt_topic: mqttTopic = '',
       } = this.mqttSettings?.data?.data || {};
+
+      console.log(
+        '-------- > > > Getting Image from URL < < < --------',
+        new Date(),
+      );
 
       const imageRes = (await this.httpService.axiosRef.get(imageUrl, {
         responseType: 'arraybuffer',
@@ -1268,22 +1285,44 @@ export class AuthService {
         contentType: 'image/jpeg',
       });
 
-      const generationRes =
-        (await this.httpService.axiosRef.post<GenerationResponse>(
-          `${this.mqttStockMafiaApi}media-generations`,
-          formData,
-          {
-            headers: {
-              Authorization: `Bearer ${this.mqttAccessToken}`,
-              'X-API-KEY': this.mqttXApiKey,
-              ...formData.getHeaders(),
+      console.log(
+        '-------- > > > Sending FORM Data < < < --------',
+        new Date(),
+      );
+
+      let generationRes: { data: GenerationResponse } | null = null;
+
+      try {
+        generationRes =
+          (await this.httpService.axiosRef.post<GenerationResponse>(
+            `${this.mqttStockMafiaApi}media-generations`,
+            formData,
+            {
+              headers: {
+                Authorization: `Bearer ${this.mqttAccessToken}`,
+                'X-API-KEY': this.mqttXApiKey,
+                ...formData.getHeaders(),
+              },
             },
-          },
-        )) as { data: GenerationResponse };
+          )) as { data: GenerationResponse };
+      } catch (err) {
+        console.error(
+          '------ !!! Error in AI video generation "request" ------',
+          new Date(),
+        );
+        console.error('MESSAGE: ', err.message);
+        console.log('\n-------\n');
+        console.error('response.data: ', err?.response?.data);
+        throw new InternalServerErrorException(
+          'Failed to initiate AI video generation',
+        );
+      }
 
       console.log(
         '-------- 🟡 🟡 AI GENERATION RESPONSE --------',
-        generationRes,
+        new Date(),
+        '\n',
+        generationRes?.data,
       );
 
       const generationId = generationRes.data.data.generation_id;
@@ -1291,6 +1330,10 @@ export class AuthService {
         throw new Error('No generation_id returned from media-generations API');
 
       return await new Promise((resolve, reject) => {
+        console.log(
+          '-------- 🟡 🟡 Initiated MQTT connection --------',
+          new Date(),
+        );
         const client: MqttClient = mqttConnect(
           `mqtt://${mqttHost}:${mqttPort}`,
         );
@@ -1302,12 +1345,17 @@ export class AuthService {
         }, 300000);
 
         client.on('connect', () => {
+          console.log('-------- 🟡 🟡 connected to MQTT --------', new Date());
           client.subscribe(mqttTopic, (err) => {
             if (err) {
               clearTimeout(timeout);
               client.end();
               reject(new Error('MQTT subscription failed'));
             }
+            console.log(
+              '-------- 🟡 🟡 subscribed to MQTT --------',
+              new Date(),
+            );
           });
         });
 
@@ -1316,6 +1364,10 @@ export class AuthService {
         let flag75: boolean = false;
 
         client.on('message', (topic, message) => {
+          console.log(
+            '-------- 🟡 🟡 received message from MQTT --------',
+            new Date(),
+          );
           void (async () => {
             try {
               const payload = JSON.parse(message.toString()) as MqttMessage;
@@ -1372,7 +1424,7 @@ export class AuthService {
 
         client.on('error', (err) => {
           console.log(
-            '-------- ❌ 🔴 🔴 AI GENERATION RESPONSE message "ERROR" 🔴 🔴 ❌ --------',
+            '-------- AI GENERATION RESPONSE message "ERROR" --------',
           );
           console.log(err.message);
           console.log('--------------------------------------------------');
@@ -1386,10 +1438,13 @@ export class AuthService {
     } catch (err) {
       console.log(
         '-------- ❌ ❌ ❌ AI Video Generation Failed ❌ ❌ ❌ --------',
+        new Date(),
       );
       console.log(err.message);
-      console.log('--------------------------------------------------');
-      console.log(err);
+      console.log(
+        '---------------- err.response.data ----------------------------------',
+      );
+      console.log(err.response?.data);
       console.log('--------------------------------------------------');
       throw new InternalServerErrorException('Failed to generate AI video');
     }

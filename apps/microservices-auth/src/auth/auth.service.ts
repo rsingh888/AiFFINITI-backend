@@ -816,6 +816,8 @@ export class AuthService {
     const slideshowUrl = await this.uploadVideoToSupabase(videoPath, userId);
     await this.cleanupJobFolder(videoPath);
 
+    console.log('-------- ✅ SLIDE SHOW GENERATED --------', slideshowUrl);
+
     return slideshowUrl;
   }
 
@@ -825,11 +827,13 @@ export class AuthService {
       if (!mediaData || !mediaData.photos || mediaData.photos.length === 0)
         return;
 
-      console.log('Slide Show Generation Started');
+      console.log('🟡🟡 Slide Show Generation Started');
 
       const bestImage =
         (await this.bestImageService.selectBestImage(mediaData.photos)) ||
         mediaData.photos[0];
+
+      console.log('🟡🟡 Best Image -->', bestImage);
 
       const [slideshowUrl, aiVideoRes] = await Promise.all([
         this.generateSlideShowAndUploadToSupabase(mediaData.photos, userId),
@@ -851,6 +855,8 @@ export class AuthService {
       //   userId,
       // );
       const aiVideo = aiVideoRes.videoUrl;
+
+      console.log('-------- ✅ ✅ AI VIDEO CREATED --------', aiVideo);
 
       const updatedVideos = [...(mediaData.aiVideos ?? []), aiVideo];
 
@@ -890,7 +896,13 @@ export class AuthService {
 
       await this.updateCheckpoint(userId, 'VIDEO_PROCESSED_DONE');
     } catch (err) {
-      console.error('Background video generation failed:', err);
+      console.error('------- ‼️ ❌ AI IMAGE GENERATION ISSUE ❌ ‼️ ---------');
+      console.log(err.message);
+      console.log('------------------------------------------------');
+      console.log(err?.response);
+      console.log('------------------------------------------------');
+      console.error('Background video generation failed:\n----->', err);
+      console.log('------------------------------------------------');
     }
   }
 
@@ -1212,7 +1224,7 @@ export class AuthService {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_HOUR)
   async refreshMqttSettings() {
     console.log('Cron job running every minutes');
     this.mqttSettings = (await this.httpService
@@ -1268,6 +1280,11 @@ export class AuthService {
             },
           },
         )) as { data: GenerationResponse };
+
+      console.log(
+        '-------- 🟡 🟡 AI GENERATION RESPONSE --------',
+        generationRes,
+      );
 
       const generationId = generationRes.data.data.generation_id;
       if (!generationId)
@@ -1354,13 +1371,26 @@ export class AuthService {
         });
 
         client.on('error', (err) => {
+          console.log(
+            '-------- ❌ 🔴 🔴 AI GENERATION RESPONSE message "ERROR" 🔴 🔴 ❌ --------',
+          );
+          console.log(err.message);
+          console.log('--------------------------------------------------');
+          console.log(err);
+          console.log('--------------------------------------------------');
           clearTimeout(timeout);
           client.end();
           reject(err);
         });
       });
     } catch (err) {
-      console.error('AI Video Generation Failed:', err);
+      console.log(
+        '-------- ❌ ❌ ❌ AI Video Generation Failed ❌ ❌ ❌ --------',
+      );
+      console.log(err.message);
+      console.log('--------------------------------------------------');
+      console.log(err);
+      console.log('--------------------------------------------------');
       throw new InternalServerErrorException('Failed to generate AI video');
     }
   }

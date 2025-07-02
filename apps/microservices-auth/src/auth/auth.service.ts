@@ -96,6 +96,9 @@ export class AuthService {
   get mqttAccessToken(): string {
     return this.configService.get<string>('MQTT_ACCESS_TOKEN') || '';
   }
+  get googleGeocodingApi(): string {
+    return this.configService.get<string>('GOOGLE_GEOCODING_API') || '';
+  }
 
   // Testing purpose
 
@@ -211,11 +214,14 @@ export class AuthService {
         const fbRes = await axios.get(
           `https://graph.facebook.com/me?access_token=${token}&fields=id,email,name`,
         );
+        // CAUTION : TODO :-----> ADARSH AGGRAWAL EMAIL IN FUTURE
         const fbData = fbRes.data as {
           email: string;
+          id: string;
         };
+        console.log('🔴 Logging FB Data ----->', fbData);
         return {
-          email: fbData.email,
+          email: fbData.id,
         };
       }
       case 'apple': {
@@ -413,6 +419,40 @@ export class AuthService {
 
   // Location Update
 
+  private async getAddressFromLatLng(latitude: number, longitude: number) {
+    const GOOGLE_API_KEY = this.googleGeocodingApi;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}`;
+
+    try {
+      const res = await axios.get(url);
+      const data = res.data as {
+        results?: Array<{
+          address_components: Array<{ types: string[]; long_name: string }>;
+        }>;
+      };
+      const result:
+        | { address_components: Array<{ types: string[]; long_name: string }> }
+        | undefined = data.results?.[0];
+      if (!result) return {};
+
+      const get = (type: string) =>
+        result.address_components.find(
+          (c: { types: string[]; long_name: string }) => c.types.includes(type),
+        )?.long_name;
+
+      return {
+        street: get('route') || get('sublocality') || '',
+        city: get('locality') || get('administrative_area_level_2') || '',
+        state: get('administrative_area_level_1') || '',
+        country: get('country') || '',
+        zipcode: get('postal_code') || '',
+      };
+    } catch (error) {
+      console.error('Error in reverse geocoding:', error);
+      return {};
+    }
+  }
+
   async updateLocation(
     userId: string,
     data: { location: { latitude: number; longitude: number } },
@@ -437,32 +477,46 @@ export class AuthService {
         'LOCATION_DONE',
       );
 
+      const address = await this.getAddressFromLatLng(
+        location.latitude,
+        location.longitude,
+      );
+
+      const dataToSave = {
+        userId,
+        ...address,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
       const existingLocation = await this.getUserLocation(userId);
       const isFirstTime = !existingLocation;
 
       if (isFirstTime) {
-        await this.db
-          .insert(schema.userLocation)
-          .values({ userId, ...location });
+        await this.db.insert(schema.userLocation).values(dataToSave);
 
         await this.updateCheckpoint(userId, 'LOCATION_DONE');
 
         return {
           isSuccess: true,
           message: 'Location added successfully',
-          data: { checkPoint: 'LOCATION_DONE', location },
+          data: {
+            checkPoint: 'LOCATION_DONE',
+            location,
+            address,
+          },
         };
       }
 
       await this.db
         .update(schema.userLocation)
-        .set(location)
+        .set(dataToSave)
         .where(eq(schema.userLocation.userId, userId));
 
       return {
         isSuccess: true,
         message: 'Location updated successfully',
-        data: { checkPoint: user.loginFormCheckPoint, location },
+        data: { checkPoint: user.loginFormCheckPoint, location, address },
       };
     } catch (err) {
       console.error('Error in updateLocation:', err);
@@ -718,6 +772,10 @@ export class AuthService {
       const response = await this.rekognitionClient.send(command);
       const confidence = Math.round(response.Confidence ?? 0);
 
+      if (confidence < 50) {
+        throw new BadRequestException("Unable to verify user's face");
+      }
+
       await this.db
         .update(schema.userInfo)
         .set({
@@ -866,7 +924,13 @@ export class AuthService {
       } else {
         await this.db
           .update(schema.userMedia)
-          .set({ photos: photos })
+          .set({
+            photos: photos,
+            aiVideoProgress: '0%',
+            photoSlideShowProgress: '0%',
+            aiVideos: [],
+            photoSlideShow: [],
+          })
           .where(eq(schema.userMedia.userId, userId));
       }
 
@@ -1080,6 +1144,7 @@ export class AuthService {
       if (!existsSync(jobDir)) {
         await fsPromises.mkdir(jobDir, { recursive: true });
       }
+
       const normalizedImagePaths: string[] = [];
 
       for (let i = 0; i < images.length; i++) {
@@ -1090,19 +1155,26 @@ export class AuthService {
         })) as { data: ArrayBuffer };
 
         const imageBuffer = Buffer.from(response.data);
-        await sharp(imageBuffer).jpeg().toFile(localPath);
+
+        await sharp(imageBuffer)
+          .rotate()
+          .resize(720, 1280, {
+            fit: 'cover',
+            position: 'center',
+          })
+          .jpeg()
+          .toFile(localPath);
+
         normalizedImagePaths.push(localPath);
       }
 
       let ffmpegInput = '';
       for (let i = 0; i < normalizedImagePaths.length; i++) {
         ffmpegInput += `file '${normalizedImagePaths[i]}'\n`;
-        // Add duration for all except the last image
         if (i < normalizedImagePaths.length) {
           ffmpegInput += `duration 2\n`;
         }
       }
-      // Repeat last image once (required)
       ffmpegInput += `file '${normalizedImagePaths[normalizedImagePaths.length - 1]}'`;
 
       await fsPromises.writeFile(inputTxtPath, ffmpegInput);

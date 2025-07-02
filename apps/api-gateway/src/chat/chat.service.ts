@@ -53,8 +53,16 @@ export class ChatApiGatewayService {
     );
 
     const users = await this.db
-      .select()
+      .select({
+        userId: schema.userInfo.userId,
+        nickName: schema.userInfo.nickName,
+        photos: schema.userMedia.photos,
+      })
       .from(schema.userInfo)
+      .leftJoin(
+        schema.userMedia,
+        eq(schema.userInfo.userId, schema.userMedia.userId),
+      )
       .where(inArray(schema.userInfo.userId, allParticipantIds));
 
     const usersMap = new Map(users.map((user) => [user.userId, user]));
@@ -68,6 +76,10 @@ export class ChatApiGatewayService {
             participants.find((participantId) => participantId !== userId) ||
               '',
           )?.nickName,
+          conversationDisplayPictures: usersMap.get(
+            participants.find((participantId) => participantId !== userId) ||
+              '',
+          )?.photos?.[0],
           participants: participants.map((participantId) => ({
             participantId,
             name: usersMap.get(participantId)?.nickName,

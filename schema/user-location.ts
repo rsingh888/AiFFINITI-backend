@@ -1,4 +1,9 @@
-import { pgTable, varchar, doublePrecision } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  varchar,
+  doublePrecision,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 import { user } from './user';
 
 export const userLocation = pgTable('location', {
@@ -12,4 +17,7 @@ export const userLocation = pgTable('location', {
   state: varchar('state', { length: 100 }),
   country: varchar('country', { length: 100 }),
   zipcode: varchar('zipcode', { length: 20 }),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

@@ -342,6 +342,7 @@ export class MicroserviceMiscService {
 
   async getPostsSuggestionsService(userId: string, data: { limit: number }) {
     const limit = Math.min(data.limit, 5);
+    console.log('🟡 : MicroserviceMiscService : limit:', limit);
 
     let [suggestions] = await this.db
       .select()
@@ -353,6 +354,7 @@ export class MicroserviceMiscService {
       !suggestions.postIds ||
       suggestions.postIds.length === 0
     ) {
+      console.log('------ INITIATING for first time !!! -----', suggestions);
       suggestions = await this.generatePostSuggestionsService(userId);
     }
 
@@ -361,6 +363,7 @@ export class MicroserviceMiscService {
     const currentSuggestions = suggestions.postIds?.slice(0, limit);
 
     const postsSize = suggestions.postIds?.length;
+    console.log('🟡 : MicroserviceMiscService : postsSize:', postsSize);
     const shift = limit % (postsSize || 1);
 
     const newPostIds =
@@ -378,10 +381,12 @@ export class MicroserviceMiscService {
       .where(eq(schema.userPostsSuggestionsStore.userId, userId));
 
     const expiresAtTime = new Date(suggestions.expiresAt || '');
+    console.log('🟡 : MicroserviceMiscService : expiresAtTime:', expiresAtTime);
     if (
       expiresAtTime.getTime() < Date.now() ||
       (suggestions.pickedProfilesCount || 0) + shift >= (postsSize || 1)
     ) {
+      console.log('------ RESETTING for expired !!! -----', suggestions);
       this.generatePostSuggestionsService(userId).catch((err) => {
         this.logger.fatal(
           `--------- USER POSTS Suggestions Failed for userId=${userId}\n\nError: ${(err as { message: string }).message}`,

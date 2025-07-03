@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, jsonb, timestamp } from 'drizzle-orm/pg-core';
 import { user } from './user';
 
 export const userMedia = pgTable('user-media', {
@@ -15,4 +15,6 @@ export const userMedia = pgTable('user-media', {
   photoSlideShowProgress: varchar('photo-slide-show-progress', {
     length: 10,
   }).default('0%'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

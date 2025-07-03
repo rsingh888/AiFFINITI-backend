@@ -321,7 +321,7 @@ export class MicroserviceMiscService {
       .values({
         userId: userId,
         postIds: suggestedPosts,
-        pickedProfilesCount: suggestedPosts.length,
+        pickedProfilesCount: 0,
         createdAt: new Date(),
         expiresAt: expiresAt,
         updatedAt: new Date(),

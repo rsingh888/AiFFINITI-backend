@@ -128,23 +128,14 @@ export class AuthApiGatewayController {
     return this.AuthApiGatewayService.postUpdateKyc(userId, body);
   }
 
-  // @UseGuards(AuthGuard)
-  // @Post('biopass/liveness-session')
-  //  createLivenessSession(@Req() req: { user: { id: string } }) {
-  //   const userId = req.user.id;
-  //   return this.AuthApiGatewayService.createSession(userId);
-  // }
+  // only for testing fe
 
-  // @UseGuards(AuthGuard)
-  // @Post('verify-photos')
-  //  postUserVerifyPhotos(
-  //   @Req() req: { user: { id: string } },
-  //   @Body() body: UpdatePhotosDto,
-  // ) {
-  //   const userId = req.user.id;
-
-  //   return this.AuthApiGatewayService.postVerifyPhotos(userId, body);
-  // }
+  @UseGuards(AuthGuard)
+  @Get('generate-upload-url')
+  postGenerateUrl(@Req() req: { user: { id: string } }) {
+    const userId = req.user.id;
+    return this.AuthApiGatewayService.generateUrl(userId);
+  }
 
   @UseGuards(AuthGuard)
   @Post('user-photos')

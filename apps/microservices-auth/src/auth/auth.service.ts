@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
@@ -8,6 +9,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
 import * as ffmpeg from 'fluent-ffmpeg';
 import { HttpService } from '@nestjs/axios';
 import { schema } from '../../../../schema/index';
@@ -28,9 +31,15 @@ import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
+  PutObjectCommand,
+  S3Client,
+  PutObjectCommandInput,
+} from '@aws-sdk/client-s3';
+import {
   RekognitionClient,
   CreateFaceLivenessSessionCommand,
   GetFaceLivenessSessionResultsCommand,
+  CompareFacesCommand,
 } from '@aws-sdk/client-rekognition';
 import axios from 'axios';
 import { JwtService } from '@nestjs/jwt';
@@ -51,6 +60,12 @@ interface GenerationResponse {
   };
 }
 
+interface ImageCheckResponse {
+  imageUrl: string;
+  similarity: number;
+  isMatch: boolean;
+}
+
 interface MqttMessage {
   action?: 'progress' | 'complete';
   data?: {
@@ -64,6 +79,7 @@ interface MqttMessage {
 export class AuthService {
   private mqttSettings: { data: SettingsResponse } | null;
   private rekognitionClient = new RekognitionClient();
+  private s3 = new S3Client();
 
   constructor(
     private bestImageService: BestImageService,
@@ -76,6 +92,9 @@ export class AuthService {
     private readonly db: NodePgDatabase<typeof schema>,
   ) {
     this.mqttSettings = null;
+    this.s3 = new S3Client({
+      region: this.configService.get<string>('AWS_REGION')!,
+    });
     this.rekognitionClient = new RekognitionClient({
       region: this.configService.get<string>('AWS_REGION')!,
       credentials: {
@@ -734,7 +753,7 @@ export class AuthService {
 
       await this.db
         .update(schema.userInfo)
-        .set({ sessionId: response.SessionId })
+        .set({ sessionId: response.SessionId, sessionCreatedAt: new Date() })
         .where(eq(schema.userInfo.userId, userId));
       return {
         isSuccess: true,
@@ -753,6 +772,26 @@ export class AuthService {
     }
   }
 
+  async uploadReferenceImageToS3(
+    userId: string,
+    imageBytes: Uint8Array,
+  ): Promise<string> {
+    const key = `reference-faces/${userId}-${Date.now()}.jpg`;
+
+    const inputCommand: PutObjectCommandInput = {
+      Bucket: 'face-image-byte-bucket',
+      Key: key,
+      Body: imageBytes,
+      ContentType: 'image/jpeg',
+    };
+
+    const command = new PutObjectCommand(inputCommand);
+
+    await this.s3.send(command);
+
+    return key;
+  }
+
   async updateKyc(userId: string, data: { sessionId: string }) {
     try {
       // AWS Integration
@@ -769,21 +808,43 @@ export class AuthService {
         'KYC_DONE',
       );
 
+      if (!userInfo.sessionCreatedAt) {
+        throw new BadRequestException('Session creation time not found');
+      }
+      const sessionTime =
+        Date.now() - new Date(userInfo.sessionCreatedAt).getTime();
+
+      if (sessionTime > 3 * 60 * 1000) {
+        throw new BadRequestException('Session expired. Please restart KYC.');
+      }
+
       const command = new GetFaceLivenessSessionResultsCommand({
         SessionId: sessionId,
       });
       const response = await this.rekognitionClient.send(command);
       const confidence = Math.round(response.Confidence ?? 0);
+      console.log(response);
 
       if (confidence < 50) {
         throw new BadRequestException("Unable to verify user's face");
       }
+
+      const referenceImageBytes = response.ReferenceImage?.Bytes;
+      if (!referenceImageBytes) {
+        throw new Error('Reference image not returned by Rekognition');
+      }
+
+      const kycReferenceImageS3Key = await this.uploadReferenceImageToS3(
+        userId,
+        referenceImageBytes,
+      );
 
       await this.db
         .update(schema.userInfo)
         .set({
           sessionId,
           confidenceScore: confidence,
+          kycReferenceImageS3Key,
         })
         .where(eq(schema.userInfo.userId, userId));
 
@@ -799,16 +860,43 @@ export class AuthService {
       };
     } catch (err) {
       console.error('KYC Update Error:', err);
+      if (err.name === 'SessionNotFoundException') {
+        throw new BadRequestException('Session expired. Please restart KYC.');
+      }
+
       if (
         err instanceof BadRequestException ||
         err instanceof NotFoundException
       ) {
         throw err;
       }
+
       throw new InternalServerErrorException(
         `KYC update failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
+  }
+
+  // For fe testing only
+  async generateUrl(userId: string) {
+    const uploadKey = `user-uploads/${userId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2)}.jpg`;
+
+    const command = new PutObjectCommand({
+      Bucket: 'face-image-byte-bucket',
+      Key: uploadKey,
+      ContentType: 'image/jpeg',
+    });
+
+    const signedUrl: string = await getSignedUrl(this.s3, command, {
+      expiresIn: 300, // 5 minutes
+    });
+
+    return {
+      uploadUrl: signedUrl,
+      publicUrl: `https://face-image-byte-bucket.s3.amazonaws.com/${uploadKey}`,
+    };
   }
 
   private async generateSlideShowAndUploadToSupabase(
@@ -912,8 +1000,69 @@ export class AuthService {
     }
   }
 
+  private async compareUploadedPhotosWithReference(
+    userId: string,
+    photos: string[] | undefined,
+  ): Promise<ImageCheckResponse[]> {
+    const userInfo = await this.getUserInfo(userId);
+    if (!userInfo || !userInfo.kycReferenceImageS3Key) {
+      throw new BadRequestException('Reference image not found');
+    }
+
+    if (!photos?.length) {
+      throw new BadRequestException('No uploaded photos provided');
+    }
+
+    const results: ImageCheckResponse[] = [];
+
+    console.time('image1');
+    for (const imageUrl of photos) {
+      try {
+        const url = new URL(imageUrl);
+        const bucket = url.hostname.split('.')[0];
+        const key = decodeURIComponent(url.pathname.slice(1));
+
+        const command = new CompareFacesCommand({
+          SourceImage: {
+            S3Object: {
+              Bucket: 'face-image-byte-bucket',
+              Name: userInfo.kycReferenceImageS3Key,
+            },
+          },
+          TargetImage: {
+            S3Object: {
+              Bucket: bucket,
+              Name: key,
+            },
+          },
+          SimilarityThreshold: 60,
+        });
+
+        const response = await this.rekognitionClient.send(command);
+        const match = response.FaceMatches?.[0];
+
+        results.push({
+          imageUrl,
+          similarity: match?.Similarity ?? 0,
+          isMatch: Boolean(match),
+        });
+      } catch (err) {
+        console.error(`Error comparing image ${imageUrl}:`, err?.message);
+        results.push({
+          imageUrl,
+          similarity: 0,
+          isMatch: false,
+        });
+      }
+    }
+    console.timeEnd('image1');
+
+    return results;
+  }
+
   async updatePhotos(userId: string, data: { photos?: string[] }) {
     try {
+      console.log('Photo comming');
       const { photos } = data;
 
       const user = await this.getUserById(userId);
@@ -927,6 +1076,30 @@ export class AuthService {
         'PHOTOS_DONE',
       );
 
+      // Image matching with face
+      const matchResults = await this.compareUploadedPhotosWithReference(
+        userId,
+        photos,
+      );
+
+      const allMatched = matchResults.every((res) => res.isMatch === true);
+
+      if (!allMatched) {
+        return {
+          isSuccess: false,
+          message:
+            'Some images did not match the reference face. Please upload correct images.',
+          data: {
+            matchResults: matchResults.map((res) => ({
+              imageUrl: res.imageUrl,
+              isMatch: res.isMatch,
+              similarity: res.similarity,
+            })),
+          },
+        };
+      }
+
+      const matchedPhotos = matchResults.map((res) => res.imageUrl);
       const existingMedia = await this.db
         .select()
         .from(schema.userMedia)
@@ -935,7 +1108,7 @@ export class AuthService {
       if (existingMedia.length === 0) {
         await this.db.insert(schema.userMedia).values({
           userId,
-          photos: photos ?? [],
+          photos: matchedPhotos ?? [],
         });
 
         await this.updateCheckpoint(userId, 'PHOTOS_DONE');
@@ -943,7 +1116,7 @@ export class AuthService {
         await this.db
           .update(schema.userMedia)
           .set({
-            photos: photos,
+            photos: matchedPhotos,
             aiVideoProgress: '0%',
             photoSlideShowProgress: '0%',
             aiVideos: [],

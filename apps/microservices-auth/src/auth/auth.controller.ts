@@ -105,14 +105,11 @@ export class AuthController {
     return this.authService.updateKyc(payload.userId, payload.data);
   }
 
-  // @MessagePattern({ cmd: 'verify-user-photos' })
-  // async verifyUserPhotos(payload: {
-  //   userId: string;
-  //   data: UpdateUserPhotosDto;
-  // }) {
-  //   return this.authService.verifyPhotos(payload.userId, payload.data);
-  // }
-
+  // For fe testing
+  @MessagePattern({ cmd: 'generate-url' })
+  async generateUrl(payload: { userId: string }) {
+    return this.authService.generateUrl(payload.userId);
+  }
   @MessagePattern({ cmd: 'update-user-photos' })
   async updateUserPhotos(payload: {
     userId: string;

@@ -37,6 +37,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.830.0",
+    "@aws-sdk/client-s3": "^3.842.0",
+    "@aws-sdk/s3-request-presigner": "^3.842.0",
     "@google-cloud/vision": "^5.2.0",
     "@nestjs/axios": "^4.0.0",
     "@nestjs/common": "^11.0.1",

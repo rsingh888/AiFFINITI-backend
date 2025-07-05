@@ -147,6 +147,16 @@ export class AuthApiGatewayService {
     );
   }
 
+  // For fe only testing
+  generateUrl(userId: string) {
+    return this.authService.send<string>(
+      {
+        cmd: 'generate-url',
+      },
+      { userId },
+    );
+  }
+
   postVerifyPhotos(userId: string, data: { photos: string[] }) {
     const { photos } = data;
 

@@ -533,6 +533,18 @@ export class ChatGateway
         }
 
         if (lastMessage?.gameSessionId) {
+          const [gameSessionStatus] = await this.db
+            .select({
+              gameStatus: schema.gameSessions.gameStatus,
+            })
+            .from(schema.gameSessions)
+            .where(eq(schema.gameSessions.id, lastMessage.gameSessionId));
+
+          if (gameSessionStatus?.gameStatus == 'ended') {
+            // TODO ::: SEND UPDATED GAME STATUS TO EACH USER
+            return;
+          }
+
           const [newGameSession] = await this.db
             .update(schema.gameSessions)
             .set({
@@ -667,6 +679,8 @@ export class ChatGateway
 
       for (let i = 0; i < conversation.participants.length; i++) {
         const participantId = conversation.participants[i];
+        // TODO ::: MANAGE GAME TOKEN PROPERLY FOR EACH PARTICIPANTS
+
         // const socketId = await this.redisClient.get(participantId);
         const recipientSockets = await this.redisClient.smembers(participantId);
         for (const socketId of recipientSockets) {

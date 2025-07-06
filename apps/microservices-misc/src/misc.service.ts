@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { and, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import { schema } from '../../../schema/index';
 import {
   IUserPostsScores,
@@ -241,6 +241,7 @@ export class MicroserviceMiscService {
           ),
           lt(distanceExpression, userPostsScores.distancePreferredInKm),
           lt(distanceExpression, targetUser.distancePreferredInKm),
+          ne(userPostsScores.userId, userId),
         ),
       )
       .orderBy(

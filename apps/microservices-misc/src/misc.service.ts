@@ -365,7 +365,7 @@ export class MicroserviceMiscService {
 
     const postsSize = suggestions.postIds?.length;
     console.log('🟡 : MicroserviceMiscService : postsSize:', postsSize);
-    const shift = limit % (postsSize || 1);
+    const shift = Math.max(limit % (postsSize || 1), 1);
 
     const newPostIds =
       suggestions.postIds

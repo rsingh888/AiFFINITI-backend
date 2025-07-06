@@ -535,6 +535,11 @@ export class AuthService {
         .set(dataToSave)
         .where(eq(schema.userLocation.userId, userId));
 
+      await this.db
+        .update(schema.userPostsScores)
+        .set({ latitude: location.latitude, longitude: location.longitude })
+        .where(eq(schema.userPostsScores.userId, userId));
+
       return {
         isSuccess: true,
         message: 'Location updated successfully',
@@ -712,6 +717,11 @@ export class AuthService {
           },
         };
       }
+
+      await this.db
+        .update(schema.userPostsScores)
+        .set({ distancePreferredInKm: distancePreferredInKm })
+        .where(eq(schema.userPostsScores.userId, userId));
 
       return {
         isSuccess: true,

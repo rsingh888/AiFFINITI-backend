@@ -118,26 +118,6 @@ export class ChattingSocketService {
     return gameSessionParticipants;
   }
 
-  // async getConversationsWithUnreadCount(userId: string) {
-  //   return this.db
-  //     .select({
-  //       id: schema.conversations.id,
-  //       type: schema.conversations.type,
-  //       lastMessageId: schema.conversations.lastMessageId,
-  //       participants: schema.conversations.participants,
-  //       // createdAt: schema.conversations.createdAt,
-  //       // updatedAt: schema.conversations.updatedAt,
-  //       unreadCount: sql<number>`(
-  //       SELECT COUNT(*) FROM ${schema.chat}
-  //       WHERE ${schema.chat.conversationId} = ${schema.conversations.id}
-  //       AND ${schema.chat.senderId} != ${userId}
-  //       AND ${schema.chat.readAt} IS NULL
-  //     )`.as('unreadCount'),
-  //     })
-  //     .from(schema.conversations)
-  //     .where(sql`${userId} = ANY (${schema.conversations.participants})`);
-  // }
-
   markConversationMessagesAsRead(conversationId: string, userId: string) {
     return this.chatApiService.send(
       { cmd: 'mark-all-read' },

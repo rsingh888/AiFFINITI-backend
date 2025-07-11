@@ -26,6 +26,17 @@ import { GameModule } from '../games/games.module';
         },
       },
     ]), // Add other microservices here
+    ClientsModule.register([
+      {
+        name: 'CHAT_API_SERVICE',
+        transport: Transport.TCP,
+        options: {
+          // host: 'https://affinity-backend-testing-1.onrender.com',
+          // host: 'localhost',
+          port: 3000,
+        },
+      },
+    ]), // Add other microservices here
     GameModule,
   ],
   providers: [ChatGateway, ChattingSocketService],

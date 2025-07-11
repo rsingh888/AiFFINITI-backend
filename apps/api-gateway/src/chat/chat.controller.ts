@@ -52,4 +52,16 @@ export class ChatController {
       conversationId,
     );
   }
+
+  @UseGuards(AuthGuard)
+  @Post('mark-all-read')
+  markAllMessagesRead(
+    @GetUser() user: AppUser,
+    @Body() body: { conversationId: string },
+  ) {
+    return this.ChatApiGatewayService.markAllMessagesRead(
+      user.id,
+      body.conversationId,
+    );
+  }
 }

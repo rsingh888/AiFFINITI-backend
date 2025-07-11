@@ -4,12 +4,15 @@ import { schema } from '../../../../schema/index';
 
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq, or } from 'drizzle-orm';
+import { ClientProxy } from '@nestjs/microservices';
 
 @Injectable()
 export class ChattingSocketService {
   private readonly logger = new Logger(ChattingSocketService.name);
 
   constructor(
+    @Inject('CHAT_API_SERVICE')
+    private chatApiService: ClientProxy,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
@@ -113,5 +116,35 @@ export class ChattingSocketService {
       .where(eq(schema.gameParticipants.gameSessionId, gameSessionId));
 
     return gameSessionParticipants;
+  }
+
+  // async getConversationsWithUnreadCount(userId: string) {
+  //   return this.db
+  //     .select({
+  //       id: schema.conversations.id,
+  //       type: schema.conversations.type,
+  //       lastMessageId: schema.conversations.lastMessageId,
+  //       participants: schema.conversations.participants,
+  //       // createdAt: schema.conversations.createdAt,
+  //       // updatedAt: schema.conversations.updatedAt,
+  //       unreadCount: sql<number>`(
+  //       SELECT COUNT(*) FROM ${schema.chat}
+  //       WHERE ${schema.chat.conversationId} = ${schema.conversations.id}
+  //       AND ${schema.chat.senderId} != ${userId}
+  //       AND ${schema.chat.readAt} IS NULL
+  //     )`.as('unreadCount'),
+  //     })
+  //     .from(schema.conversations)
+  //     .where(sql`${userId} = ANY (${schema.conversations.participants})`);
+  // }
+
+  markConversationMessagesAsRead(conversationId: string, userId: string) {
+    return this.chatApiService.send(
+      { cmd: 'mark-all-read' },
+      {
+        conversationId,
+        userId,
+      },
+    );
   }
 }

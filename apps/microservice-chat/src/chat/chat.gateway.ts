@@ -201,6 +201,11 @@ export class ChatGateway
     //   client.data.rooms.add(conversationId);
     // }
 
+    this.chattingSocketService.markConversationMessagesAsRead(
+      conversationId,
+      senderId,
+    );
+
     const [conversation] = await this.db
       .select()
       .from(schema.conversations)

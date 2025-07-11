@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { schema } from '../../../../schema/index';
 
-import { eq, desc, sql, and, asc, inArray, ne } from 'drizzle-orm';
+import { eq, desc, sql, and, asc, inArray, ne, isNull } from 'drizzle-orm';
 import { GetChatMessagesDto } from './dto/get-chat-messages.dto';
 import { GetConversationsDto } from './dto/get-conversations.dto';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -48,6 +48,27 @@ export class ChatApiGatewayService {
       .offset(dto.offset)
       .limit(dto.limit);
 
+    const conversationIds = allConversations.map((c) => c.id);
+
+    const unreadCounts = await this.db
+      .select({
+        conversationId: schema.chat.conversationId,
+        unreadCount: sql<number>`COUNT(*)`.as('unreadCount'),
+      })
+      .from(schema.chat)
+      .where(
+        and(
+          inArray(schema.chat.conversationId, conversationIds), // filter by your array
+          ne(schema.chat.senderId, userId), // skip messages sent by user
+          isNull(schema.chat.readAt), // only unread messages
+        ),
+      )
+      .groupBy(schema.chat.conversationId);
+
+    const unreadCountMap = new Map(
+      unreadCounts.map((uc) => [uc.conversationId, uc.unreadCount]),
+    );
+
     const allParticipantIds = Array.from(
       new Set(allConversations.flatMap((c) => c.participants)),
     );
@@ -67,7 +88,7 @@ export class ChatApiGatewayService {
 
     const usersMap = new Map(users.map((user) => [user.userId, user]));
 
-    const allConversationsWithConversationTitle = allConversations.map(
+    const allConversationsWithInfo = allConversations.map(
       ({ id, participants, ...rest }) => {
         return {
           id,
@@ -84,6 +105,7 @@ export class ChatApiGatewayService {
             participantId,
             name: usersMap.get(participantId)?.nickName,
           })),
+          unreadCount: unreadCountMap.get(id) || 0,
         };
       },
     );
@@ -91,7 +113,7 @@ export class ChatApiGatewayService {
     return {
       isSuccess: true,
       message: 'Conversations fetched successfully',
-      data: { conversations: allConversationsWithConversationTitle },
+      data: { conversations: allConversationsWithInfo },
     };
   }
 
@@ -378,5 +400,34 @@ export class ChatApiGatewayService {
         },
       };
     }
+  }
+
+  async markAllMessagesRead(userId: string, conversationId: string) {
+    const [conversation] = await this.db
+      .select()
+      .from(schema.conversations)
+      .where(eq(schema.conversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+
+    if (!conversation.participants.includes(userId)) {
+      throw new ForbiddenException(
+        'You are not a participant of this conversation',
+      );
+    }
+
+    await this.db
+      .update(schema.chat)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(schema.chat.conversationId, conversationId),
+          ne(schema.chat.senderId, userId),
+          sql`${schema.chat.readAt} IS NULL`,
+        ),
+      );
+
+    return { isSuccess: true, message: 'All messages marked as read' };
   }
 }

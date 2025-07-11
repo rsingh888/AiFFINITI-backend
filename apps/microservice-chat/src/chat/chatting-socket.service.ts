@@ -4,12 +4,15 @@ import { schema } from '../../../../schema/index';
 
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq, or } from 'drizzle-orm';
+import { ClientProxy } from '@nestjs/microservices';
 
 @Injectable()
 export class ChattingSocketService {
   private readonly logger = new Logger(ChattingSocketService.name);
 
   constructor(
+    @Inject('CHAT_API_SERVICE')
+    private chatApiService: ClientProxy,
     @Inject('DRIZZLE_CLIENT')
     private readonly db: NodePgDatabase<typeof schema>,
   ) {}
@@ -113,5 +116,15 @@ export class ChattingSocketService {
       .where(eq(schema.gameParticipants.gameSessionId, gameSessionId));
 
     return gameSessionParticipants;
+  }
+
+  markConversationMessagesAsRead(conversationId: string, userId: string) {
+    return this.chatApiService.send(
+      { cmd: 'mark-all-read' },
+      {
+        conversationId,
+        userId,
+      },
+    );
   }
 }

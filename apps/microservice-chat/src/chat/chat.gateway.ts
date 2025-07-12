@@ -127,6 +127,11 @@ export class ChatGateway
       // Support multiple devices per user
       await this.redisClient.sadd(user.id, client.id);
 
+      const count = await this.redisClient.scard(user.id);
+      if (count > 0) {
+        await this.notifyUserOnlineStatus(user.id, true); //  now online
+      }
+
       this.logger.log(`Authenticated socket ${client.id} for user ${user.id}`);
     } catch (err) {
       const errorMessage =
@@ -154,9 +159,11 @@ export class ChatGateway
 
     if (userId) {
       await this.redisClient.srem(userId, client.id);
-      const remainingSockets = await this.redisClient.scard(userId);
-      if (remainingSockets === 0) {
+      const remaining = await this.redisClient.scard(userId);
+
+      if (remaining === 0) {
         await this.redisClient.del(userId);
+        await this.notifyUserOnlineStatus(userId, false); // now offline
       }
     }
 
@@ -693,6 +700,64 @@ export class ChatGateway
             message: lastMessagesWithGameSessionAndParticipants,
           });
         }
+      }
+    }
+  }
+
+  @SubscribeMessage('get-online-conversations')
+  async handleGetOnlineConversations(
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    const userId = client.data.userId;
+    const friends = await this.getUserConnections(userId);
+    const onlineFriends: string[] = [];
+
+    for (const friendId of friends) {
+      const socketCount = await this.redisClient.scard(friendId);
+      if (socketCount > 0) {
+        onlineFriends.push(friendId);
+      }
+    }
+
+    client.emit('online-conversations', { onlineFriends });
+  }
+
+  private async getUserConnections(userId: string): Promise<string[]> {
+    const conversations = await this.db
+      .select({
+        participants: schema.conversations.participants,
+      })
+      .from(schema.conversations)
+      .where(
+        sql`${schema.conversations.participants} @> ${JSON.stringify([userId])}::jsonb`,
+      );
+
+    const connectedUsers = new Array<string>();
+    conversations.forEach((conv) => {
+      conv.participants.forEach((p) => {
+        if (p !== userId) connectedUsers.push(p);
+      });
+    });
+
+    return connectedUsers;
+  }
+
+  private async notifyUserOnlineStatus(userId: string, isOnline: boolean) {
+    const friends = await this.getUserConnections(userId);
+
+    for (const conversationId of friends) {
+      const conversationSockets =
+        await this.redisClient.smembers(conversationId);
+      for (const socketId of conversationSockets) {
+        console.log(
+          '🟡 : ChatGateway : notifyUserOnlineStatus : conversationId:',
+          conversationId,
+          isOnline,
+        );
+        this.server.to(socketId).emit('conversation-online-status-change', {
+          userId,
+          isOnline,
+        });
       }
     }
   }

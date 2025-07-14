@@ -16,7 +16,7 @@ import { postViews } from 'schema/post-views';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { GENDER_PREFERENCE_OPTIONS } from 'schema/user-info';
 
-const { user, userInfo, userLocation, post } = schema;
+const { user, userInfo, userLocation, post, userMedia } = schema;
 
 const PROFILE_SCORES = {
   LAST_CHAT_TIME_IN_MINS_FROM_NOW: -0.01,
@@ -420,13 +420,27 @@ export class MicroserviceMiscService {
   }
 
   private async getPostDetails(postIds: string[], userId: string) {
+    const targetUser = await this.getUserInfoForMatching(userId);
+    const earthRadiusKm = 6371;
+
+    const distanceExpression = sql<number>`(
+    ${earthRadiusKm} * acos(
+      cos(radians(${targetUser.latitude})) * cos(radians(${userLocation.latitude})) *
+      cos(radians(${userLocation.longitude} - ${targetUser.longitude})) +
+      sin(radians(${targetUser.latitude})) * sin(radians(${userLocation.latitude}))
+    )
+  )`;
     /* Caution: need to use fully aware ORM way */
     const posts = await this.db
       .select({
         postId: post.postId,
         postMediaUrl: post.postMediaUrl,
         nickName: userInfo.nickName,
+        userDateOfBirth: userInfo.dateOfBirth,
         city: userLocation.city,
+        userImage: userMedia.photos,
+
+        distanceInKm: distanceExpression.as('distanceInKm'),
 
         isLiked: sql<boolean>`EXISTS (
           SELECT 1 FROM "post-likes"
@@ -463,6 +477,7 @@ export class MicroserviceMiscService {
       })
       .from(post)
       .leftJoin(user, eq(user.id, post.userId))
+      .leftJoin(userMedia, eq(userMedia.userId, post.userId))
       .leftJoin(userInfo, eq(userInfo.userId, user.id))
       .leftJoin(userLocation, eq(userLocation.userId, user.id))
       .where(inArray(schema.post.postId, postIds))
@@ -470,6 +485,7 @@ export class MicroserviceMiscService {
 
     const enriched = posts.map((p) => ({
       ...p,
+      userImage: p.userImage?.[0] || '',
       city: p.city || ' ',
     }));
 

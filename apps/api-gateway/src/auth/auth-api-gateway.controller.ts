@@ -113,7 +113,8 @@ export class AuthApiGatewayController {
   // @UseGuards(AuthGuard)
   @Get('create-session')
   createSession(@Req() req: { user: { id: string } }) {
-    const userId = req.user.id;
+    // const userId = req.user.id;
+    const userId="7e58da98-9196-4465-adc9-f9ba6e2cbc9b";
     return this.AuthApiGatewayService.createSession(userId);
   }
 

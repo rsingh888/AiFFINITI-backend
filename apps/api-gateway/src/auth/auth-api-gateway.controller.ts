@@ -110,7 +110,7 @@ export class AuthApiGatewayController {
     );
   }
 
-  @UseGuards(AuthGuard)
+  // @UseGuards(AuthGuard)
   @Get('create-session')
   createSession(@Req() req: { user: { id: string } }) {
     const userId = req.user.id;
